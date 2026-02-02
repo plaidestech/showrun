@@ -125,6 +125,25 @@ export interface NetworkReplayOverrides {
   bodyReplace?: { find: string; replace: string };
 }
 
+/**
+ * Serializable network entry for caching (without Playwright-specific internals)
+ */
+export interface NetworkEntrySerializable {
+  id: string;
+  ts: number;
+  method: string;
+  url: string;
+  resourceType?: string;
+  requestHeaders: Record<string, string>;
+  requestHeadersFull: Record<string, string>;
+  postData?: string;
+  status?: number;
+  responseHeaders?: Record<string, string>;
+  contentType?: string;
+  responseBodyText?: string;
+  responseBodyBase64?: string;
+}
+
 export interface NetworkCaptureApi {
   list(limit?: number, filter?: 'all' | 'api' | 'xhr'): NetworkEntrySummary[];
   get(requestId: string): NetworkEntrySummary | null;
@@ -136,6 +155,10 @@ export interface NetworkCaptureApi {
   clear(): void;
   /** Get request ID from buffer by index (for find) */
   getRequestIdByIndex(where: NetworkFindWhere, pick: 'first' | 'last'): string | null;
+  /** Export a network entry by ID for caching/serialization */
+  exportEntry(requestId: string): NetworkEntrySerializable | null;
+  /** Import a previously exported network entry into the buffer */
+  importEntry(entry: NetworkEntrySerializable): void;
 }
 
 let idCounter = 0;
@@ -431,6 +454,62 @@ export function attachNetworkCapture(page: Page): NetworkCaptureApi {
       buffer.length = 0;
       mapById.clear();
       totalBytesEstimate = 0;
+    },
+
+    exportEntry(requestId: string): NetworkEntrySerializable | null {
+      const entry = mapById.get(requestId);
+      if (!entry) return null;
+      return {
+        id: entry.id,
+        ts: entry.ts,
+        method: entry.method,
+        url: entry.url,
+        resourceType: entry.resourceType,
+        requestHeaders: entry.requestHeaders,
+        requestHeadersFull: entry.requestHeadersFull,
+        postData: entry.postData,
+        status: entry.status,
+        responseHeaders: entry.responseHeaders,
+        contentType: entry.contentType,
+        responseBodyText: entry.responseBodyText,
+        responseBodyBase64: entry.responseBodyBase64,
+      };
+    },
+
+    importEntry(entry: NetworkEntrySerializable): void {
+      // Skip if entry already exists
+      if (mapById.has(entry.id)) return;
+
+      const internal: NetworkEntryInternal = {
+        id: entry.id,
+        ts: entry.ts,
+        method: entry.method,
+        url: entry.url,
+        resourceType: entry.resourceType,
+        requestHeaders: entry.requestHeaders,
+        requestHeadersFull: entry.requestHeadersFull,
+        postData: entry.postData,
+        status: entry.status,
+        responseHeaders: entry.responseHeaders,
+        contentType: entry.contentType,
+        responseBodyText: entry.responseBodyText,
+        responseBodyBase64: entry.responseBodyBase64,
+        bytesEstimate: 0,
+      };
+
+      // Calculate bytes estimate
+      internal.bytesEstimate =
+        entry.url.length +
+        JSON.stringify(entry.requestHeaders).length +
+        (entry.postData?.length ?? 0) +
+        (entry.responseBodyText ? Buffer.byteLength(entry.responseBodyText, 'utf8') : 0) +
+        (entry.responseBodyBase64 ? Math.ceil((entry.responseBodyBase64.length * 3) / 4) : 0) +
+        200;
+
+      mapById.set(entry.id, internal);
+      buffer.push(internal);
+      totalBytesEstimate += internal.bytesEstimate;
+      dropOldest();
     },
   };
 

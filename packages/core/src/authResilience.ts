@@ -22,39 +22,96 @@ function sanitizeCacheId(id: string): string {
   return id.replace(/[/\\]/g, '-');
 }
 
+import type { NetworkEntrySerializable } from './networkCapture.js';
+
+/**
+ * Outputs produced by a step (vars, collectibles, and network entries)
+ */
+export interface StepOutput {
+  vars: Record<string, unknown>;
+  collectibles: Record<string, unknown>;
+  /** Network entries referenced by this step (for network_find/network_replay caching) */
+  networkEntries?: NetworkEntrySerializable[];
+}
+
 /**
  * Cache for tracking executed "once" steps per session/profile.
+ * Stores step outputs (vars and collectibles) to restore them when steps are skipped.
  * Can be loaded from and persisted to disk when sessionId/profileId are provided.
  */
 export class OnceCache {
-  private sessionCache = new Set<string>();
-  private profileCache = new Set<string>();
+  private sessionCache = new Map<string, StepOutput>();
+  private profileCache = new Map<string, StepOutput>();
 
   /**
    * Create a cache, optionally loading from disk for the given sessionId and/or profileId.
+   *
+   * Storage locations:
+   * - Session cache: always in temp directory (ephemeral, cleared on server restart)
+   * - Profile cache: in profileCacheDir/.once-cache/profile.json if provided, else temp directory
    */
-  static fromDisk(sessionId?: string, profileId?: string, cacheDir?: string): OnceCache {
-    const dir = cacheDir ?? getOnceCacheDir();
+  static fromDisk(sessionId?: string, profileId?: string, profileCacheDir?: string): OnceCache {
+    const defaultDir = getOnceCacheDir();
     const cache = new OnceCache();
+
+    // Session cache always in temp directory (ephemeral)
     if (sessionId) {
-      const file = join(dir, `once-session-${sanitizeCacheId(sessionId)}.json`);
+      const file = join(defaultDir, `once-session-${sanitizeCacheId(sessionId)}.json`);
       if (existsSync(file)) {
         try {
           const data = readFileSync(file, 'utf-8');
-          const ids = JSON.parse(data) as string[];
-          if (Array.isArray(ids)) ids.forEach((id) => cache.sessionCache.add(id));
+          const parsed = JSON.parse(data);
+          // Backward compatibility: if data is an array (old format), convert to Map with empty outputs
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id: string) =>
+              cache.sessionCache.set(id, { vars: {}, collectibles: {} })
+            );
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // New format: object with stepId -> StepOutput
+            for (const [stepId, outputs] of Object.entries(parsed)) {
+              const stepOutput = outputs as StepOutput;
+              cache.sessionCache.set(stepId, {
+                vars: stepOutput.vars ?? {},
+                collectibles: stepOutput.collectibles ?? {},
+                networkEntries: stepOutput.networkEntries,
+              });
+            }
+          }
         } catch {
           // Ignore corrupt or missing file
         }
       }
     }
+
+    // Profile cache in pack directory if provided, else default temp dir
     if (profileId) {
-      const file = join(dir, `once-profile-${sanitizeCacheId(profileId)}.json`);
-      if (existsSync(file)) {
+      let profileFile: string;
+      if (profileCacheDir) {
+        const cacheSubdir = join(profileCacheDir, '.once-cache');
+        profileFile = join(cacheSubdir, 'profile.json');
+      } else {
+        profileFile = join(defaultDir, `once-profile-${sanitizeCacheId(profileId)}.json`);
+      }
+      if (existsSync(profileFile)) {
         try {
-          const data = readFileSync(file, 'utf-8');
-          const ids = JSON.parse(data) as string[];
-          if (Array.isArray(ids)) ids.forEach((id) => cache.profileCache.add(id));
+          const data = readFileSync(profileFile, 'utf-8');
+          const parsed = JSON.parse(data);
+          // Backward compatibility: if data is an array (old format), convert to Map with empty outputs
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id: string) =>
+              cache.profileCache.set(id, { vars: {}, collectibles: {} })
+            );
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // New format: object with stepId -> StepOutput
+            for (const [stepId, outputs] of Object.entries(parsed)) {
+              const stepOutput = outputs as StepOutput;
+              cache.profileCache.set(stepId, {
+                vars: stepOutput.vars ?? {},
+                collectibles: stepOutput.collectibles ?? {},
+                networkEntries: stepOutput.networkEntries,
+              });
+            }
+          }
         } catch {
           // Ignore corrupt or missing file
         }
@@ -65,26 +122,47 @@ export class OnceCache {
 
   /**
    * Persist cache to disk for the given sessionId and/or profileId.
+   *
+   * Storage locations:
+   * - Session cache: always in temp directory (ephemeral)
+   * - Profile cache: in profileCacheDir/.once-cache/profile.json if provided, else temp directory
    */
-  persist(sessionId?: string, profileId?: string, cacheDir?: string): void {
-    const dir = cacheDir ?? getOnceCacheDir();
-    try {
-      mkdirSync(dir, { recursive: true });
-    } catch {
-      return;
-    }
+  persist(sessionId?: string, profileId?: string, profileCacheDir?: string): void {
+    const defaultDir = getOnceCacheDir();
+
+    // Session cache always in temp directory
     if (sessionId) {
-      const file = join(dir, `once-session-${sanitizeCacheId(sessionId)}.json`);
       try {
-        writeFileSync(file, JSON.stringify([...this.sessionCache]), 'utf-8');
+        mkdirSync(defaultDir, { recursive: true });
+        const file = join(defaultDir, `once-session-${sanitizeCacheId(sessionId)}.json`);
+        const cacheObj: Record<string, StepOutput> = {};
+        for (const [stepId, outputs] of this.sessionCache) {
+          cacheObj[stepId] = outputs;
+        }
+        writeFileSync(file, JSON.stringify(cacheObj, null, 2), 'utf-8');
       } catch {
         // Ignore write errors
       }
     }
+
+    // Profile cache in pack directory if provided, else default temp dir
     if (profileId) {
-      const file = join(dir, `once-profile-${sanitizeCacheId(profileId)}.json`);
+      let profileFile: string;
+      let profileDir: string;
+      if (profileCacheDir) {
+        profileDir = join(profileCacheDir, '.once-cache');
+        profileFile = join(profileDir, 'profile.json');
+      } else {
+        profileDir = defaultDir;
+        profileFile = join(defaultDir, `once-profile-${sanitizeCacheId(profileId)}.json`);
+      }
       try {
-        writeFileSync(file, JSON.stringify([...this.profileCache]), 'utf-8');
+        mkdirSync(profileDir, { recursive: true });
+        const cacheObj: Record<string, StepOutput> = {};
+        for (const [stepId, outputs] of this.profileCache) {
+          cacheObj[stepId] = outputs;
+        }
+        writeFileSync(profileFile, JSON.stringify(cacheObj, null, 2), 'utf-8');
       } catch {
         // Ignore write errors
       }
@@ -104,14 +182,22 @@ export class OnceCache {
   }
 
   /**
-   * Mark a step as executed
+   * Mark a step as executed with its outputs
    */
-  markExecuted(stepId: string, scope: 'session' | 'profile'): void {
+  markExecuted(stepId: string, scope: 'session' | 'profile', outputs: StepOutput = { vars: {}, collectibles: {} }): void {
     if (scope === 'session') {
-      this.sessionCache.add(stepId);
+      this.sessionCache.set(stepId, outputs);
     } else {
-      this.profileCache.add(stepId);
+      this.profileCache.set(stepId, outputs);
     }
+  }
+
+  /**
+   * Get cached outputs for a step
+   */
+  getOutputs(stepId: string, scope: 'session' | 'profile'): StepOutput | undefined {
+    const cache = scope === 'session' ? this.sessionCache : this.profileCache;
+    return cache.get(stepId);
   }
 
   /**

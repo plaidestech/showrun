@@ -1,4 +1,4 @@
-import { createServer } from 'http';
+import { createServer, IncomingMessage } from 'http';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -18,6 +18,36 @@ export interface MCPServerHTTPOptions {
   headful: boolean;
   port: number;
   host?: string;
+}
+
+interface ClientSession {
+  id: string;
+  server: McpServer;
+  transport: StreamableHTTPServerTransport;
+  createdAt: Date;
+  lastAccessedAt: Date;
+}
+
+// Session timeout in milliseconds (30 minutes)
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+// Cleanup interval (5 minutes)
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Parse cookies from request header
+ */
+function parseCookies(req: IncomingMessage): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return cookies;
+
+  for (const cookie of cookieHeader.split(';')) {
+    const [name, ...valueParts] = cookie.trim().split('=');
+    if (name && valueParts.length > 0) {
+      cookies[name.trim()] = valueParts.join('=').trim();
+    }
+  }
+  return cookies;
 }
 
 function inputSchemaToZodSchema(inputs: InputSchema): z.ZodRawShape {
@@ -53,6 +83,11 @@ export interface MCPServerHTTPHandle {
 /**
  * Creates and starts the MCP server with Streamable HTTP (HTTPS/SSE) transport.
  * Returns handle with port, url, and close() to stop the server.
+ *
+ * Session Management:
+ * - Each client gets their own isolated session
+ * - Client can provide session ID via 'mcp-session-id' header to resume a session
+ * - New session ID is generated if client doesn't provide one
  */
 export async function createMCPServerOverHTTP(
   options: MCPServerHTTPOptions
@@ -62,90 +97,187 @@ export async function createMCPServerOverHTTP(
   mkdirSync(baseRunDir, { recursive: true });
   const limiter = new ConcurrencyLimiter(concurrency);
 
-  const mcpServer = new McpServer({
-    name: 'taskpack-mcp-server',
-    version: '0.1.0',
-  });
+  // Store sessions by client session ID
+  const sessions = new Map<string, ClientSession>();
 
-  for (const { pack, toolName } of packs) {
-    const inputSchema = inputSchemaToZodSchema(pack.inputs);
-    mcpServer.registerTool(
-      toolName,
-      {
-        title: pack.metadata.name,
-        description: `${pack.metadata.description || pack.metadata.name} (v${pack.metadata.version})`,
-        inputSchema,
-      },
-      async (inputs: Record<string, unknown>) => {
-        const runId = randomUUID();
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const runDir = join(baseRunDir, `${toolName}-${timestamp}-${runId.slice(0, 8)}`);
-        return await limiter.execute(async () => {
-          const logger = new JSONLLogger(runDir);
-          try {
-            const runResult = await runTaskPack(pack, inputs, {
-              runDir,
-              logger,
-              headless: !headful,
-            });
-            const output = {
-              taskId: pack.metadata.id,
-              version: pack.metadata.version,
-              runId,
-              meta: runResult.meta,
-              collectibles: runResult.collectibles,
-              runDir: runResult.runDir,
-              eventsPath: runResult.eventsPath,
-              artifactsDir: runResult.artifactsDir,
-            };
-            return {
-              content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
-              structuredContent: output,
-            };
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const errorOutput = {
-              taskId: pack.metadata.id,
-              version: pack.metadata.version,
-              runId,
-              error: errorMessage,
-              meta: { durationMs: 0, notes: `Error: ${errorMessage}` },
-              collectibles: {},
-              runDir,
-              eventsPath: join(runDir, 'events.jsonl'),
-              artifactsDir: join(runDir, 'artifacts'),
-            };
-            return {
-              content: [{ type: 'text' as const, text: JSON.stringify(errorOutput, null, 2) }],
-              structuredContent: errorOutput,
-            };
-          }
-        });
-      }
-    );
+  /**
+   * Create a new MCP server instance with all tools registered
+   */
+  function createMcpServerWithTools(clientSessionId: string): McpServer {
+    const server = new McpServer({
+      name: 'taskpack-mcp-server',
+      version: '0.1.0',
+    });
+
+    for (const { pack, toolName, path: packDir } of packs) {
+      const inputSchema = inputSchemaToZodSchema(pack.inputs);
+      server.registerTool(
+        toolName,
+        {
+          title: pack.metadata.name,
+          description: `${pack.metadata.description || pack.metadata.name} (v${pack.metadata.version})`,
+          inputSchema,
+        },
+        async (inputs: Record<string, unknown>) => {
+          const runId = randomUUID();
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const runDir = join(baseRunDir, `${toolName}-${timestamp}-${runId.slice(0, 8)}`);
+          return await limiter.execute(async () => {
+            const logger = new JSONLLogger(runDir);
+            try {
+              const runResult = await runTaskPack(pack, inputs, {
+                runDir,
+                logger,
+                headless: !headful,
+                sessionId: clientSessionId, // Use client's session ID for once-cache
+                profileId: pack.metadata.id,
+                cacheDir: packDir,
+              });
+              const output = {
+                taskId: pack.metadata.id,
+                version: pack.metadata.version,
+                runId,
+                meta: runResult.meta,
+                collectibles: runResult.collectibles,
+                runDir: runResult.runDir,
+                eventsPath: runResult.eventsPath,
+                artifactsDir: runResult.artifactsDir,
+              };
+              return {
+                content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
+                structuredContent: output,
+              };
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              const errorOutput = {
+                taskId: pack.metadata.id,
+                version: pack.metadata.version,
+                runId,
+                error: errorMessage,
+                meta: { durationMs: 0, notes: `Error: ${errorMessage}` },
+                collectibles: {},
+                runDir,
+                eventsPath: join(runDir, 'events.jsonl'),
+                artifactsDir: join(runDir, 'artifacts'),
+              };
+              return {
+                content: [{ type: 'text' as const, text: JSON.stringify(errorOutput, null, 2) }],
+                structuredContent: errorOutput,
+              };
+            }
+          });
+        }
+      );
+    }
+
+    return server;
   }
 
-  // Generate default session ID - all requests will use this unless client provides their own
-  const defaultSessionId = randomUUID();
-  
-  // Use stateful mode with session management
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => defaultSessionId, // Return the default session ID
-  });
-  // connect() calls transport.start() internally; do not call start() here or we get "Transport already started"
-  await mcpServer.connect(transport);
+  /**
+   * Get or create a session for the given session ID
+   */
+  async function getOrCreateSession(sessionId: string): Promise<ClientSession> {
+    let session = sessions.get(sessionId);
+
+    if (session) {
+      session.lastAccessedAt = new Date();
+      return session;
+    }
+
+    // Create new session
+    const server = createMcpServerWithTools(sessionId);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => sessionId,
+    });
+
+    await server.connect(transport);
+
+    session = {
+      id: sessionId,
+      server,
+      transport,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+    };
+
+    sessions.set(sessionId, session);
+    console.error(`[MCP Server] Created new session: ${sessionId}`);
+
+    return session;
+  }
+
+  /**
+   * Extract session ID from request headers or cookies
+   */
+  function getSessionIdFromRequest(req: IncomingMessage): string | undefined {
+    // First check header (preferred for MCP clients)
+    const headerSessionId = req.headers['mcp-session-id'];
+    if (typeof headerSessionId === 'string' && headerSessionId.length > 0) {
+      return headerSessionId;
+    }
+
+    // Fallback to cookie for simple HTTP clients
+    const cookies = parseCookies(req);
+    const cookieSessionId = cookies['mcp-session-id'];
+    if (cookieSessionId && cookieSessionId.length > 0) {
+      return cookieSessionId;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Clean up inactive sessions
+   */
+  function cleanupInactiveSessions(): void {
+    const now = Date.now();
+    const expiredSessions: string[] = [];
+
+    for (const [sessionId, session] of sessions) {
+      const inactiveMs = now - session.lastAccessedAt.getTime();
+      if (inactiveMs > SESSION_TIMEOUT_MS) {
+        expiredSessions.push(sessionId);
+      }
+    }
+
+    for (const sessionId of expiredSessions) {
+      sessions.delete(sessionId);
+      console.error(`[MCP Server] Removed inactive session: ${sessionId} (inactive for ${Math.round(SESSION_TIMEOUT_MS / 60000)} minutes)`);
+    }
+
+    if (expiredSessions.length > 0) {
+      console.error(`[MCP Server] Active sessions: ${sessions.size}`);
+    }
+  }
+
+  // Start cleanup interval
+  const cleanupInterval = setInterval(cleanupInactiveSessions, CLEANUP_INTERVAL_MS);
 
   const httpServer = createServer(async (req, res) => {
     try {
-      // If client doesn't provide Mcp-Session-Id header, inject the default one
-      // This allows all requests to use the same session by default
-      // If client explicitly provides a session ID, use that instead
-      if (!req.headers['mcp-session-id'] && !req.headers['Mcp-Session-Id']) {
-        req.headers['mcp-session-id'] = defaultSessionId;
+      // Get session ID from header or cookie, or generate new one
+      let sessionId = getSessionIdFromRequest(req);
+      const isNewSession = !sessionId;
+
+      if (!sessionId) {
+        sessionId = randomUUID();
       }
-      
-      await transport.handleRequest(req, res);
+
+      // Inject session ID into headers for the transport
+      req.headers['mcp-session-id'] = sessionId;
+
+      const session = await getOrCreateSession(sessionId);
+
+      // Set session ID in both header and cookie for client flexibility
+      if (isNewSession) {
+        res.setHeader('Mcp-Session-Id', sessionId);
+      }
+      // Always set/refresh the cookie
+      res.setHeader('Set-Cookie', `mcp-session-id=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TIMEOUT_MS / 1000)}`);
+
+      await session.transport.handleRequest(req, res);
     } catch (err) {
+      console.error('[MCP Server] Request error:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
     }
@@ -158,11 +290,15 @@ export async function createMCPServerOverHTTP(
       const actualPort = typeof addr === 'object' && addr !== null ? addr.port : port;
       const scheme = 'http';
       const url = `${scheme}://${host}:${actualPort}`;
+      console.error(`[MCP Server] HTTP server listening on ${url}`);
+      console.error(`[MCP Server] Session management enabled - each client gets isolated session`);
       resolve({
         port: actualPort,
         url,
         close: () =>
           new Promise<void>((closeResolve) => {
+            clearInterval(cleanupInterval);
+            sessions.clear();
             httpServer.close(() => closeResolve());
           }),
       });

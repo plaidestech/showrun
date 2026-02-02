@@ -79,6 +79,9 @@ export async function createMCPServer(
 ): Promise<void> {
   const { packs, baseRunDir, concurrency, headful } = options;
 
+  // Generate unique session ID for this server instance
+  const serverSessionId = randomUUID();
+
   // Ensure base run directory exists
   mkdirSync(baseRunDir, { recursive: true });
 
@@ -87,6 +90,7 @@ export async function createMCPServer(
 
   // Log server startup
   console.error(`[MCP Server] Starting with ${packs.length} task pack(s)`);
+  console.error(`[MCP Server] Session ID: ${serverSessionId}`);
   console.error(`[MCP Server] Concurrency: ${concurrency}, Headful: ${headful}`);
   console.error(`[MCP Server] Base run directory: ${baseRunDir}`);
 
@@ -97,7 +101,7 @@ export async function createMCPServer(
   });
 
   // Register each discovered pack as a tool
-  for (const { pack, toolName } of packs) {
+  for (const { pack, toolName, path: packDir } of packs) {
     const inputSchema = inputSchemaToZodSchema(pack.inputs);
     
     server.registerTool(
@@ -127,6 +131,9 @@ export async function createMCPServer(
               runDir,
               logger,
               headless: !headful,
+              sessionId: serverSessionId,
+              profileId: pack.metadata.id,
+              cacheDir: packDir,
             });
 
             console.error(

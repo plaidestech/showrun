@@ -29,6 +29,10 @@ export interface RunTaskPackOptions {
    * Profile ID for "once" step caching (profile scope)
    */
   profileId?: string;
+  /**
+   * Directory for profile cache storage (typically the pack directory)
+   */
+  cacheDir?: string;
 }
 
 /**
@@ -123,6 +127,7 @@ export async function runTaskPack(
         auth: taskPack.auth,
         sessionId: options.sessionId,
         profileId: options.profileId,
+        cacheDir: options.cacheDir,
       });
       // Convert RunFlowResult to RunResult format
       result = {

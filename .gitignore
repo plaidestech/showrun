@@ -33,6 +33,9 @@ Thumbs.db
 # Persisted once-cache (optional; usually under system tmp)
 mcpify-once-cache/
 
+# Task pack once-cache (stored in pack directories)
+.once-cache/
+
 # Turbo (if used later)
 .turbo
 

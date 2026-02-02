@@ -11,7 +11,54 @@ import {
   setupBrowserAuthMonitoring,
   shouldSkipStep,
   getOnceSteps,
+  type StepOutput,
 } from '../authResilience.js';
+import type { NetworkCaptureApi, NetworkEntrySerializable } from '../networkCapture.js';
+
+/**
+ * Capture the delta of vars and collectibles produced by a step,
+ * along with any network entries referenced by new vars (for network_find caching)
+ */
+function captureStepOutputs(
+  varsBefore: Record<string, unknown>,
+  varsAfter: Record<string, unknown>,
+  collectiblesBefore: Record<string, unknown>,
+  collectiblesAfter: Record<string, unknown>,
+  networkCapture?: NetworkCaptureApi
+): StepOutput {
+  const newVars: Record<string, unknown> = {};
+  const newCollectibles: Record<string, unknown> = {};
+  const networkEntries: NetworkEntrySerializable[] = [];
+
+  // Find vars that were added or modified
+  for (const [key, value] of Object.entries(varsAfter)) {
+    if (!(key in varsBefore) || varsBefore[key] !== value) {
+      newVars[key] = value;
+
+      // If the value looks like a request ID (string starting with 'req-'),
+      // export the network entry for caching
+      if (networkCapture && typeof value === 'string' && value.startsWith('req-')) {
+        const entry = networkCapture.exportEntry(value);
+        if (entry) {
+          networkEntries.push(entry);
+        }
+      }
+    }
+  }
+
+  // Find collectibles that were added or modified
+  for (const [key, value] of Object.entries(collectiblesAfter)) {
+    if (!(key in collectiblesBefore) || collectiblesBefore[key] !== value) {
+      newCollectibles[key] = value;
+    }
+  }
+
+  return {
+    vars: newVars,
+    collectibles: newCollectibles,
+    networkEntries: networkEntries.length > 0 ? networkEntries : undefined,
+  };
+}
 
 /**
  * Extended options for running a flow with auth resilience
@@ -21,6 +68,10 @@ export interface RunFlowOptionsWithAuth extends RunFlowOptions {
   auth?: AuthConfig;
   sessionId?: string;
   profileId?: string;
+  /**
+   * Directory for profile cache storage (typically the pack directory)
+   */
+  cacheDir?: string;
 }
 
 /**
@@ -37,6 +88,7 @@ export async function runFlow(
   const authConfig = options?.auth;
   const sessionId = options?.sessionId;
   const profileId = options?.profileId;
+  const cacheDir = options?.cacheDir;
 
   // Validate flow before execution
   validateFlow(steps);
@@ -53,7 +105,7 @@ export async function runFlow(
   // Initialize auth resilience components: load persisted "once" cache when sessionId/profileId provided
   const onceCache =
     sessionId || profileId
-      ? OnceCache.fromDisk(sessionId, profileId)
+      ? OnceCache.fromDisk(sessionId, profileId, cacheDir)
       : new OnceCache();
   let authMonitor: AuthFailureMonitor | null = null;
   let authGuard: AuthGuardChecker | null = null;
@@ -112,12 +164,31 @@ export async function runFlow(
 
       // Check if step should be skipped due to "once" cache
       if (shouldSkipStep(step, onceCache, sessionId, profileId)) {
+        // Determine scope and restore cached outputs
+        const scope = step.once === 'session' && sessionId ? 'session' : 'profile';
+        const cachedOutputs = onceCache.getOutputs(step.id, scope);
+
+        // Restore cached vars and collectibles
+        if (cachedOutputs) {
+          Object.assign(vars, cachedOutputs.vars);
+          Object.assign(collectibles, cachedOutputs.collectibles);
+
+          // Restore network entries into the capture buffer
+          if (cachedOutputs.networkEntries && ctx.networkCapture) {
+            for (const entry of cachedOutputs.networkEntries) {
+              ctx.networkCapture.importEntry(entry);
+            }
+          }
+        }
+
         ctx.logger.log({
           type: 'step_skipped',
           data: {
             stepId: step.id,
             type: step.type,
             reason: 'once_already_executed',
+            restoredVars: cachedOutputs ? Object.keys(cachedOutputs.vars) : [],
+            restoredCollectibles: cachedOutputs ? Object.keys(cachedOutputs.collectibles) : [],
           },
         });
         stepsExecuted++;
@@ -143,6 +214,10 @@ export async function runFlow(
       });
 
       try {
+        // Snapshot state before step execution (for capturing outputs)
+        const varsBefore = resolvedStep.once ? { ...vars } : {};
+        const collectiblesBefore = resolvedStep.once ? { ...collectibles } : {};
+
         // Apply step-level timeout if specified
         const timeoutMs = resolvedStep.timeoutMs;
         let stepPromise = executeStep(stepContext, resolvedStep);
@@ -159,10 +234,11 @@ export async function runFlow(
         await stepPromise;
         stepsExecuted++;
 
-        // Mark step as executed if it has "once" flag
+        // Mark step as executed if it has "once" flag, with captured outputs
         if (resolvedStep.once) {
           const scope = resolvedStep.once === 'session' && sessionId ? 'session' : 'profile';
-          onceCache.markExecuted(step.id, scope);
+          const stepOutputs = captureStepOutputs(varsBefore, vars, collectiblesBefore, collectibles, ctx.networkCapture);
+          onceCache.markExecuted(step.id, scope, stepOutputs);
         }
 
         // Log step finish
@@ -258,6 +334,10 @@ export async function runFlow(
             let retrySuccess = false;
             for (let retryAttempt = 0; retryAttempt < maxRetries; retryAttempt++) {
               try {
+                // Snapshot state before retry (for capturing outputs)
+                const retryVarsBefore = resolvedStep.once ? { ...vars } : {};
+                const retryCollectiblesBefore = resolvedStep.once ? { ...collectibles } : {};
+
                 // Update current step ID for monitoring
                 stepContext.currentStepId = step.id;
                 setupBrowserAuthMonitoring(ctx.page, authMonitor, ctx.logger, step.id);
@@ -276,10 +356,11 @@ export async function runFlow(
                 retrySuccess = true;
                 stepsExecuted++;
 
-                // Mark step as executed if it has "once" flag
+                // Mark step as executed if it has "once" flag, with captured outputs
                 if (resolvedStep.once) {
                   const scope = resolvedStep.once === 'session' && sessionId ? 'session' : 'profile';
-                  onceCache.markExecuted(step.id, scope);
+                  const stepOutputs = captureStepOutputs(retryVarsBefore, vars, retryCollectiblesBefore, collectibles, ctx.networkCapture);
+                  onceCache.markExecuted(step.id, scope, stepOutputs);
                 }
 
                 // Log successful retry
@@ -388,7 +469,7 @@ export async function runFlow(
     throw error;
   } finally {
     if (sessionId || profileId) {
-      onceCache.persist(sessionId, profileId);
+      onceCache.persist(sessionId, profileId, cacheDir);
     }
   }
 }
@@ -408,9 +489,27 @@ async function executeStepsWithRecovery(
   stopOnError: boolean,
   authRecoveriesUsed: number
 ): Promise<void> {
+  const { vars } = variableContext;
+  const collectibles = stepContext.collectibles;
+  const networkCapture = stepContext.networkCapture;
+
   for (const step of steps) {
     // Skip if already executed (shouldn't happen during recovery, but be safe)
     if (shouldSkipStep(step, onceCache, sessionId, profileId)) {
+      // Restore cached outputs when skipping during recovery
+      const scope = step.once === 'session' && sessionId ? 'session' : 'profile';
+      const cachedOutputs = onceCache.getOutputs(step.id, scope);
+      if (cachedOutputs) {
+        Object.assign(vars, cachedOutputs.vars);
+        Object.assign(collectibles, cachedOutputs.collectibles);
+
+        // Restore network entries into the capture buffer
+        if (cachedOutputs.networkEntries && networkCapture) {
+          for (const entry of cachedOutputs.networkEntries) {
+            networkCapture.importEntry(entry);
+          }
+        }
+      }
       continue;
     }
 
@@ -420,6 +519,10 @@ async function executeStepsWithRecovery(
     } as DslStep;
 
     try {
+      // Snapshot state before step execution (for capturing outputs)
+      const varsBefore = resolvedStep.once ? { ...vars } : {};
+      const collectiblesBefore = resolvedStep.once ? { ...collectibles } : {};
+
       // Update current step ID and monitoring for current step
       stepContext.currentStepId = step.id;
       if (authMonitor?.isEnabled()) {
@@ -428,10 +531,11 @@ async function executeStepsWithRecovery(
 
       await executeStep(stepContext, resolvedStep);
 
-      // Mark as executed
+      // Mark as executed with captured outputs
       if (resolvedStep.once) {
         const scope = resolvedStep.once === 'session' && sessionId ? 'session' : 'profile';
-        onceCache.markExecuted(step.id, scope);
+        const stepOutputs = captureStepOutputs(varsBefore, vars, collectiblesBefore, collectibles, networkCapture);
+        onceCache.markExecuted(step.id, scope, stepOutputs);
       }
     } catch (error) {
       // If recovery fails during setup rerun, throw (don't retry recovery)
