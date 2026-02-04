@@ -75,10 +75,7 @@ export default function ChatView({
   const [isSummarizing, setIsSummarizing] = useState(false);
 
   // UI state
-  const [showBrowser, setShowBrowser] = useState(true);
-  const [showNetwork, setShowNetwork] = useState(false);
-  const [showToolHistory, setShowToolHistory] = useState(true);
-  const [toolHistoryExpanded, setToolHistoryExpanded] = useState<Set<number>>(new Set());
+  const [showNetwork, setShowNetwork] = useState(true);
 
   // Network requests
   const [networkRequests, setNetworkRequests] = useState<NetworkEntry[]>([]);
@@ -408,24 +405,6 @@ export default function ChatView({
     }
   };
 
-  const toggleToolHistoryEntry = (index: number) => {
-    setToolHistoryExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  };
-
-  const formatToolPayload = (obj: unknown, maxLen: number = 2000): string => {
-    try {
-      const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
-      return s.length > maxLen ? s.slice(0, maxLen) + '\n...' : s;
-    } catch {
-      return String(obj);
-    }
-  };
-
   const useRequestId = (requestId: string) => {
     setInputValue(`Use request ${requestId}`);
   };
@@ -553,7 +532,7 @@ export default function ChatView({
           />
         </div>
 
-        {/* Right side panel (browser, network, tools) */}
+        {/* Right side panel (network) */}
         <div style={{
           width: '400px',
           borderLeft: '1px solid var(--border-subtle)',
@@ -562,50 +541,6 @@ export default function ChatView({
           overflow: 'hidden',
           backgroundColor: 'var(--bg-sidebar)',
         }}>
-          {/* Browser panel */}
-          {showBrowser && (
-            <div className="browser-panel" style={{ margin: '12px', flex: screenshot ? 'none' : 1 }}>
-              <div className="browser-panel-header">
-                <span>Browser</span>
-                {!sessionId ? (
-                  <button
-                    className="btn-secondary"
-                    style={{ padding: '4px 12px', fontSize: '12px' }}
-                    onClick={handleStartSession}
-                    disabled={isLoading}
-                  >
-                    Start Session
-                  </button>
-                ) : (
-                  <button
-                    className="btn-secondary"
-                    style={{ padding: '4px 12px', fontSize: '12px' }}
-                    onClick={loadNetworkRequests}
-                  >
-                    Refresh
-                  </button>
-                )}
-              </div>
-              {screenshot ? (
-                <img
-                  src={screenshot}
-                  alt="Browser screenshot"
-                  className="browser-screenshot"
-                  style={{ maxHeight: '300px', objectFit: 'contain' }}
-                />
-              ) : (
-                <div style={{
-                  padding: '40px 20px',
-                  textAlign: 'center',
-                  color: 'var(--text-muted)',
-                  fontSize: '13px',
-                }}>
-                  {sessionId ? 'Waiting for screenshot...' : 'Click "Start Session" to begin'}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Network panel */}
           {showNetwork && sessionId && (
             <div className="network-panel" style={{ margin: '12px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -648,124 +583,13 @@ export default function ChatView({
             </div>
           )}
 
-          {/* Tool history panel */}
-          {showToolHistory && (
-            <div className="tool-history" style={{ margin: '12px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div className="tool-history-header">
-                <span>Tool History</span>
-                {activeToolExecution && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    <span className="spinner" />
-                    Running...
-                  </span>
-                )}
-              </div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                {toolTrace.length === 0 && !activeToolExecution && (
-                  <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center' }}>
-                    No tools executed yet
-                  </div>
-                )}
-                {toolTrace.map((t, i) => (
-                  <div key={i} className="tool-history-item">
-                    <button
-                      type="button"
-                      onClick={() => toggleToolHistoryEntry(i)}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '4px 0',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      <span className={t.success ? 'tool-history-success' : 'tool-history-error'}>
-                        {t.success ? '✓' : '✗'}
-                      </span>
-                      <span className="tool-history-name">{t.tool}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-                        {toolHistoryExpanded.has(i) ? '▼' : '▶'}
-                      </span>
-                    </button>
-                    {toolHistoryExpanded.has(i) && (
-                      <div style={{ marginTop: '10px', paddingLeft: '8px', borderLeft: '2px solid var(--border-subtle)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-muted)' }}>
-                          Input
-                        </div>
-                        <pre style={{
-                          margin: '0 0 12px 0',
-                          padding: '8px',
-                          backgroundColor: 'var(--bg-input)',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          overflow: 'auto',
-                          maxHeight: '100px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          color: 'var(--text-secondary)',
-                        }}>
-                          {formatToolPayload(t.args)}
-                        </pre>
-                        <div style={{ fontSize: '11px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-muted)' }}>
-                          Result
-                        </div>
-                        <pre style={{
-                          margin: 0,
-                          padding: '8px',
-                          backgroundColor: 'var(--bg-input)',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          overflow: 'auto',
-                          maxHeight: '100px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          color: 'var(--text-secondary)',
-                        }}>
-                          {formatToolPayload(t.result)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Active tool execution */}
-                {activeToolExecution && (
-                  <div className="tool-history-item" style={{ backgroundColor: 'rgba(245, 158, 11, 0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span className="spinner" />
-                      <span className="tool-history-name">{activeToolExecution.tool}</span>
-                      <span style={{ color: 'var(--accent-orange)', fontSize: '12px' }}>executing...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Panel toggles */}
+          {/* Network toggle */}
           <div style={{
             display: 'flex',
             gap: '8px',
             padding: '12px',
             borderTop: '1px solid var(--border-subtle)',
           }}>
-            <button
-              className={`btn-secondary ${showBrowser ? '' : ''}`}
-              style={{
-                flex: 1,
-                padding: '8px',
-                fontSize: '12px',
-                backgroundColor: showBrowser ? 'var(--bg-card-active)' : undefined,
-              }}
-              onClick={() => setShowBrowser(!showBrowser)}
-            >
-              Browser
-            </button>
             <button
               className={`btn-secondary ${showNetwork ? '' : ''}`}
               style={{
@@ -778,18 +602,6 @@ export default function ChatView({
               disabled={!sessionId}
             >
               Network
-            </button>
-            <button
-              className={`btn-secondary ${showToolHistory ? '' : ''}`}
-              style={{
-                flex: 1,
-                padding: '8px',
-                fontSize: '12px',
-                backgroundColor: showToolHistory ? 'var(--bg-card-active)' : undefined,
-              }}
-              onClick={() => setShowToolHistory(!showToolHistory)}
-            >
-              Tools
             </button>
           </div>
         </div>
