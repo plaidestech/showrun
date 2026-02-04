@@ -181,7 +181,8 @@ function App() {
 
       if (res.ok) {
         const newConv = (await res.json()) as Conversation;
-        setConversations((prev) => [newConv, ...prev]);
+        // Don't add to local state - the socket 'conversations:updated' event will update the list
+        // This prevents duplicate entries from race conditions
         setSelectedConversationId(newConv.id);
         setActiveView('chat');
       }
