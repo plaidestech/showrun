@@ -26,7 +26,7 @@ import type { NetworkCaptureApi, NetworkFindWhere, NetworkReplayOverrides } from
 import { resolveTemplate } from './templating.js';
 import { resolveTargetWithFallback, selectorToTarget } from './target.js';
 import type { AuthFailureMonitor } from '../authResilience.js';
-import { JSONPath } from 'jsonpath-plus';
+import { search as jmesSearch, type JSONValue } from '@jmespath-community/jmespath';
 
 /**
  * Step execution context
@@ -388,30 +388,71 @@ async function executeSetVar(
 }
 
 /**
- * Extract value from object using path expression.
- * Supports JSONPath syntax (starting with $) or simple dot notation.
- * Examples:
- *   - "$.results[0].hits[*]" - JSONPath with array access and wildcards
- *   - "$.name" - JSONPath for simple field
- *   - "data.items" - Simple dot notation (legacy)
+ * Result from getByPath with optional diagnostic hint
  */
-function getByPath(obj: unknown, path: string): unknown {
-  const trimmed = path.trim();
+interface PathResult {
+  value: unknown;
+  hint?: string;
+}
 
-  // Use JSONPath for paths starting with $ or containing brackets
-  if (trimmed.startsWith('$') || trimmed.includes('[')) {
-    const results = JSONPath({ path: trimmed, json: obj as object, wrap: false });
-    return results;
+/**
+ * Extract value from object using JMESPath expression.
+ * Returns { value, hint? } where hint contains diagnostic info on failure.
+ *
+ * JMESPath supports:
+ *   - "results[0].name" - array access and nested fields
+ *   - "results[*].name" - wildcard to get all names
+ *   - "results[*].{name: name, url: url}" - object projection
+ *   - "results[?status == 'active']" - filtering
+ *   - "results | [0]" - piping
+ *
+ * For backward compatibility, JSONPath-style paths starting with "$." are
+ * automatically converted (the "$." prefix is stripped).
+ */
+function getByPath(obj: unknown, path: string): PathResult {
+  let trimmed = path.trim();
+
+  // Backward compatibility: strip JSONPath-style "$." prefix
+  // $.results[0].name -> results[0].name
+  if (trimmed.startsWith('$.')) {
+    trimmed = trimmed.slice(2);
+  } else if (trimmed === '$') {
+    // "$" alone means root in JSONPath - return the whole object
+    return { value: obj };
   }
 
-  // Simple dot-path fallback for legacy paths
-  const parts = trimmed.split('.');
-  let current: unknown = obj;
-  for (const key of parts) {
-    if (current == null || typeof current !== 'object') return undefined;
-    current = (current as Record<string, unknown>)[key];
+  // Empty path returns the whole object
+  if (!trimmed) {
+    return { value: obj };
   }
-  return current;
+
+  try {
+    const result = jmesSearch(obj as JSONValue, trimmed);
+
+    // Check for null/undefined results and provide diagnostic hint
+    if (result === null || result === undefined) {
+      return {
+        value: result,
+        hint: `JMESPath '${trimmed}' matched nothing (returned ${result}). Verify the path exists. Try a simpler path like 'data' or 'keys(@)' to inspect the structure.`,
+      };
+    }
+
+    // Check for empty array results
+    if (Array.isArray(result) && result.length === 0) {
+      return {
+        value: result,
+        hint: `JMESPath '${trimmed}' returned an empty array. The path may be correct but no items matched.`,
+      };
+    }
+
+    return { value: result };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      value: undefined,
+      hint: `JMESPath syntax error in '${trimmed}': ${errorMessage}. See https://jmespath.org for syntax reference.`,
+    };
+  }
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -569,6 +610,9 @@ async function executeNetworkReplay(
     };
   }
 
+  // Use 'path' with fallback to deprecated 'jsonPath' for backward compatibility
+  const pathExpr = step.params.response.path || step.params.response.jsonPath;
+
   let outValue: unknown;
   if (step.params.response.as === 'json') {
     try {
@@ -576,13 +620,25 @@ async function executeNetworkReplay(
     } catch {
       throw new Error(`network_replay: response body is not valid JSON (status ${result.status})`);
     }
-    if (step.params.response.jsonPath) {
-      outValue = getByPath(outValue, step.params.response.jsonPath);
+    if (pathExpr) {
+      const pathResult = getByPath(outValue, pathExpr);
+      outValue = pathResult.value;
+      // Store hint if path extraction had issues
+      if (pathResult.hint) {
+        ctx.vars['__jmespath_hint'] = pathResult.hint;
+      }
     }
   } else {
-    outValue = step.params.response.jsonPath
-      ? getByPath(JSON.parse(result.body) as unknown, step.params.response.jsonPath)
-      : result.body;
+    if (pathExpr) {
+      const pathResult = getByPath(JSON.parse(result.body) as unknown, pathExpr);
+      outValue = pathResult.value;
+      // Store hint if path extraction had issues
+      if (pathResult.hint) {
+        ctx.vars['__jmespath_hint'] = pathResult.hint;
+      }
+    } else {
+      outValue = result.body;
+    }
     if (typeof outValue === 'object' && outValue !== null) {
       outValue = JSON.stringify(outValue);
     }
@@ -610,39 +666,47 @@ async function executeNetworkExtract(
         ? raw
         : JSON.stringify(raw);
 
+  // Use 'path' with fallback to deprecated 'jsonPath' for backward compatibility
+  const pathExpr = step.params.path || step.params.jsonPath;
+
+  // Collect hints from JMESPath operations
+  const hints: string[] = [];
+
   let value: unknown;
   if (step.params.as === 'json') {
     const parsed = JSON.parse(bodyStr) as unknown;
-    value = step.params.jsonPath ? getByPath(parsed, step.params.jsonPath) : parsed;
-
-    // Apply transform if provided (maps each item in array using jsonPath expressions)
-    if (step.params.transform && Array.isArray(value)) {
-      const transformMap = step.params.transform;
-      value = value.map((item: unknown) => {
-        const transformed: Record<string, unknown> = {};
-        for (const [key, path] of Object.entries(transformMap)) {
-          transformed[key] = getByPath(item, path);
-        }
-        return transformed;
-      });
-    } else if (step.params.transform && !Array.isArray(value) && typeof value === 'object' && value !== null) {
-      // Single object transform
-      const transformMap = step.params.transform;
-      const transformed: Record<string, unknown> = {};
-      for (const [key, path] of Object.entries(transformMap)) {
-        transformed[key] = getByPath(value, path);
+    if (pathExpr) {
+      const pathResult = getByPath(parsed, pathExpr);
+      value = pathResult.value;
+      if (pathResult.hint) {
+        hints.push(pathResult.hint);
       }
-      value = transformed;
+    } else {
+      value = parsed;
     }
+    // Note: JMESPath handles projections natively, e.g., "results[*].{id: id, name: name}"
+    // The deprecated 'transform' parameter is no longer needed
   } else {
-    value = step.params.jsonPath
-      ? getByPath(JSON.parse(bodyStr) as unknown, step.params.jsonPath)
-      : bodyStr;
+    if (pathExpr) {
+      const pathResult = getByPath(JSON.parse(bodyStr) as unknown, pathExpr);
+      value = pathResult.value;
+      if (pathResult.hint) {
+        hints.push(pathResult.hint);
+      }
+    } else {
+      value = bodyStr;
+    }
     if (typeof value === 'object' && value !== null) {
       value = JSON.stringify(value);
     }
   }
   ctx.collectibles[step.params.out] = value;
+
+  // Store hints in a special variable for propagation to run results
+  if (hints.length > 0) {
+    const existingHints = (ctx.vars['__jmespath_hints'] as string[]) || [];
+    ctx.vars['__jmespath_hints'] = [...existingHints, ...hints];
+  }
 }
 
 /**

@@ -114,6 +114,35 @@ Steps support `{{inputs.xxx}}`, `{{vars.xxx}}`, and `{{secret.xxx}}` substitutio
 - Built-in Nunjucks filters: `urlencode`, `upper`, `lower`, `trim`, etc.
 - `totp` - Generate TOTP code from base32 secret: `{{secret.TOTP_KEY | totp}}`
 
+### JMESPath for Data Extraction
+
+The `network_extract` and `network_replay` steps use **JMESPath** for extracting data from JSON responses.
+
+**Common patterns:**
+```json
+{
+  "type": "network_extract",
+  "params": {
+    "fromVar": "apiResponse",
+    "as": "json",
+    "path": "results[*].{id: id, name: name, url: website}",
+    "out": "companies"
+  }
+}
+```
+
+**JMESPath examples:**
+- `results[0].name` - First item's name
+- `results[*].name` - All names as array
+- `results[*].{id: id, name: name}` - Project to new objects
+- `results[?status == 'active']` - Filter by condition
+- `results | [0]` - Pipe to get first
+- `length(results)` - Get count
+
+**Backward compatibility:** Paths starting with `$.` (JSONPath-style) are automatically converted by stripping the prefix. E.g., `$.results[0]` becomes `results[0]`.
+
+See https://jmespath.org for full syntax reference.
+
 ### Secrets Management
 
 Task packs can define secrets (credentials, API keys) in `taskpack.json`:

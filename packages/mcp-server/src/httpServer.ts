@@ -11,6 +11,23 @@ import { JSONLLogger } from '@mcpify/harness/dist/index.js';
 import type { DiscoveredPack } from './packDiscovery.js';
 import { ConcurrencyLimiter } from './concurrency.js';
 
+export interface MCPRunStartInfo {
+  packId: string;
+  packName: string;
+  runId: string;
+  inputs: Record<string, unknown>;
+  runDir: string;
+}
+
+export interface MCPRunCompleteInfo {
+  packId: string;
+  runId: string;
+  success: boolean;
+  error?: string;
+  collectibles?: Record<string, unknown>;
+  durationMs?: number;
+}
+
 export interface MCPServerHTTPOptions {
   packs: DiscoveredPack[];
   baseRunDir: string;
@@ -18,6 +35,10 @@ export interface MCPServerHTTPOptions {
   headful: boolean;
   port: number;
   host?: string;
+  /** Called when a run starts (for tracking/logging) */
+  onRunStart?: (info: MCPRunStartInfo) => void;
+  /** Called when a run completes (for tracking/logging) */
+  onRunComplete?: (info: MCPRunCompleteInfo) => void;
 }
 
 interface ClientSession {
@@ -92,7 +113,7 @@ export interface MCPServerHTTPHandle {
 export async function createMCPServerOverHTTP(
   options: MCPServerHTTPOptions
 ): Promise<MCPServerHTTPHandle> {
-  const { packs, baseRunDir, concurrency, headful, port, host = '127.0.0.1' } = options;
+  const { packs, baseRunDir, concurrency, headful, port, host = '127.0.0.1', onRunStart, onRunComplete } = options;
 
   mkdirSync(baseRunDir, { recursive: true });
   const limiter = new ConcurrencyLimiter(concurrency);
@@ -124,6 +145,17 @@ export async function createMCPServerOverHTTP(
           const runDir = join(baseRunDir, `${toolName}-${timestamp}-${runId.slice(0, 8)}`);
           return await limiter.execute(async () => {
             const logger = new JSONLLogger(runDir);
+            const startTime = Date.now();
+
+            // Notify run start
+            onRunStart?.({
+              packId: pack.metadata.id,
+              packName: pack.metadata.name,
+              runId,
+              inputs,
+              runDir,
+            });
+
             try {
               const runResult = await runTaskPack(pack, inputs, {
                 runDir,
@@ -133,6 +165,7 @@ export async function createMCPServerOverHTTP(
                 profileId: pack.metadata.id,
                 cacheDir: packDir,
               });
+              const durationMs = Date.now() - startTime;
               const output = {
                 taskId: pack.metadata.id,
                 version: pack.metadata.version,
@@ -143,11 +176,22 @@ export async function createMCPServerOverHTTP(
                 eventsPath: runResult.eventsPath,
                 artifactsDir: runResult.artifactsDir,
               };
+
+              // Notify run complete (success)
+              onRunComplete?.({
+                packId: pack.metadata.id,
+                runId,
+                success: true,
+                collectibles: runResult.collectibles,
+                durationMs,
+              });
+
               return {
                 content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
                 structuredContent: output,
               };
             } catch (error) {
+              const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : String(error);
               const errorOutput = {
                 taskId: pack.metadata.id,
@@ -160,6 +204,16 @@ export async function createMCPServerOverHTTP(
                 eventsPath: join(runDir, 'events.jsonl'),
                 artifactsDir: join(runDir, 'artifacts'),
               };
+
+              // Notify run complete (failure)
+              onRunComplete?.({
+                packId: pack.metadata.id,
+                runId,
+                success: false,
+                error: errorMessage,
+                durationMs,
+              });
+
               return {
                 content: [{ type: 'text' as const, text: JSON.stringify(errorOutput, null, 2) }],
                 structuredContent: errorOutput,

@@ -13,7 +13,12 @@ import type { TaskPack, LogEvent } from '@mcpify/core';
 import { runTaskPack } from '@mcpify/core';
 import { discoverPacks } from '@mcpify/mcp-server/dist/packDiscovery.js';
 import { ConcurrencyLimiter } from '@mcpify/mcp-server/dist/concurrency.js';
-import { createMCPServerOverHTTP, type MCPServerHTTPHandle } from '@mcpify/mcp-server/dist/httpServer.js';
+import {
+  createMCPServerOverHTTP,
+  type MCPServerHTTPHandle,
+  type MCPRunStartInfo,
+  type MCPRunCompleteInfo,
+} from '@mcpify/mcp-server/dist/httpServer.js';
 import { SocketLogger } from './logger.js';
 import { RunManager, type RunInfo } from './runManager.js';
 import {
@@ -136,6 +141,8 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   // MCP server over HTTP/SSE (started from dashboard)
   let mcpServerHandle: MCPServerHTTPHandle | null = null;
   let mcpServerPackIds: string[] = [];
+  // Map MCP run IDs to database run IDs for tracking
+  const mcpRunIdMap = new Map<string, string>();
   const MCP_DEFAULT_PORT = 3340;
 
   // Create Express app
@@ -510,7 +517,9 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
     if (!Array.isArray(packIds) || packIds.length === 0) {
       return res.status(400).json({ error: 'packIds must be a non-empty array' });
     }
-    const selectedPacks = discoveredPacks.filter((d) => packIds.includes(d.pack.metadata.id));
+    // Re-discover packs to include any newly created packs
+    const currentPacks = await discoverPacks({ directories: packDirs });
+    const selectedPacks = currentPacks.filter((d) => packIds.includes(d.pack.metadata.id));
     if (selectedPacks.length === 0) {
       return res.status(400).json({ error: 'No valid pack IDs found' });
     }
@@ -523,6 +532,41 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
         headful,
         port,
         host: host === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1',
+        // Track MCP runs in the dashboard database
+        onRunStart: (info: MCPRunStartInfo) => {
+          const run = runManager.addRunAndGet(info.packId, info.packName, 'mcp');
+          // Store the mapping from MCP runId to DB runId for later lookup
+          mcpRunIdMap.set(info.runId, run.runId);
+          runManager.updateRun(run.runId, {
+            status: 'running',
+            startedAt: Date.now(),
+            runDir: info.runDir,
+          });
+          io.emit('runs:list', runManager.getAllRuns());
+          console.log(`[MCP] Run started: ${info.runId} -> ${run.runId} (pack: ${info.packId})`);
+        },
+        onRunComplete: (info: MCPRunCompleteInfo) => {
+          const dbRunId = mcpRunIdMap.get(info.runId);
+          if (dbRunId) {
+            const updates: Partial<RunInfo> = {
+              status: info.success ? 'success' : 'failed',
+              finishedAt: Date.now(),
+            };
+            if (info.error) {
+              updates.error = info.error;
+            }
+            if (info.collectibles) {
+              updates.collectibles = info.collectibles;
+            }
+            if (info.durationMs !== undefined) {
+              updates.durationMs = info.durationMs;
+            }
+            runManager.updateRun(dbRunId, updates);
+            mcpRunIdMap.delete(info.runId);
+            io.emit('runs:list', runManager.getAllRuns());
+            console.log(`[MCP] Run completed: ${info.runId} (success: ${info.success})`);
+          }
+        },
       });
       mcpServerHandle = handle;
       mcpServerPackIds = packIds;
@@ -1131,12 +1175,14 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
   const TEACH_AGENT_ACTION_FIRST =
     `\n\nTEACH MODE AGENT RULES (MANDATORY):
 - You MUST use tools. Editor MCP and Browser MCP are ALWAYS available. Tool calls are expected, not optional.
-- PACK CREATION WORKFLOW: When starting a NEW automation (no packId provided), you MUST:
-  1. First call editor_create_pack with a unique id (e.g., "mycompany.sitename.collector"), name, and description
-  2. Then call conversation_link_pack with the new packId to associate it with this conversation
-  3. Then use editor_apply_flow_patch to add steps to the flow
-  4. Use editor_run_pack to test the flow
-- If packId IS provided: FIRST call editor_read_pack(packId) before proposing any flow changes.
+- PACK CREATION WORKFLOW:
+  - If packId IS provided (a pack is already linked to this conversation): DO NOT create a new pack. Use the existing pack. FIRST call editor_read_pack(packId) to see current state, then use editor_apply_flow_patch to make changes.
+  - Only create a new pack when NO packId is provided (packId is null/undefined). In that case:
+    1. First call editor_create_pack with a unique id (e.g., "mycompany.sitename.collector"), name, and description
+    2. Then call conversation_link_pack with the new packId to associate it with this conversation
+    3. Then use editor_apply_flow_patch to add steps to the flow
+    4. Use editor_run_pack to test the flow
+  - IMPORTANT: Once a pack is linked to a conversation, ALL subsequent messages in that conversation should edit that same pack. Never create a second pack unless the user explicitly asks for a new/different one.
 - If the user asks to create a flow, add a step, or extract data: propose a DSL step and apply it via editor_apply_flow_patch. One step per patch; multiple steps = multiple patches in sequence. Supported step types include navigate, click, fill, extract_text, extract_attribute, wait_for, set_var, and network_find, network_replay, network_extract (for API-first flows: find a captured request, replay it with overrides, optionally extract from the response). Steps can include an optional "once" field ("session" or "profile") to mark them as run-once steps that are skipped on subsequent runs when auth is still valid (useful for login/setup steps).
 - When the user asks to execute/run the flow in the browser or to run the steps in the open browser: use browser_* tools (browser_goto, browser_click, browser_type, etc.) to perform the steps. Do NOT use editor_run_pack for this—editor_run_pack runs the pack in a separate run, not in the current browser session.
 - When the user asks you to CLICK a link or button (e.g. "click the Sign in link"): use browser_click with linkText and role "link" or "button". For batch names, filter options, tabs, or list items (e.g. "Winter 2026", "Spring 2026") that are not <a> or <button>, use browser_click with linkText and role "text".
@@ -1358,6 +1404,18 @@ export async function startDashboard(options: DashboardOptions): Promise<void> {
             // Emit conversation updates when conversation_* tools are called
             if (tc.name.startsWith('conversation_') && success && conversationId) {
               io.emit('conversations:updated', getAllConversations());
+            }
+
+            // Emit packs:updated when a new pack is created
+            if (tc.name === 'editor_create_pack' && success) {
+              // Re-discover packs and update packMap
+              discoverPacks({ directories: packDirs }).then((newPacks) => {
+                packMap.clear();
+                for (const { pack, path } of newPacks) {
+                  packMap.set(pack.metadata.id, { pack, path });
+                }
+                io.emit('packs:updated', packMap.size);
+              });
             }
 
             // Emit tool_result event after executing the tool

@@ -34,6 +34,11 @@ export interface RunPackResult {
   collectibles: Record<string, unknown>;
   meta: { url?: string; durationMs: number; notes?: string };
   error?: string;
+  /**
+   * Diagnostic hints from JSONPath operations (e.g., unsupported syntax, empty results).
+   * These help AI agents understand why data extraction may have failed.
+   */
+  _hints?: string[];
 }
 
 /**
@@ -360,11 +365,18 @@ export class TaskPackEditorWrapper {
         packPath: packInfo.path,
       });
 
-      return {
+      const packResult: RunPackResult = {
         success: true,
         collectibles: result.collectibles,
         meta: result.meta,
       };
+
+      // Propagate diagnostic hints if present
+      if (result._hints && result._hints.length > 0) {
+        packResult._hints = result._hints;
+      }
+
+      return packResult;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {

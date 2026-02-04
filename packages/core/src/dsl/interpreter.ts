@@ -518,7 +518,16 @@ export async function runFlow(
     const durationMs = Date.now() - startTime;
     const finalUrl = ctx.page.url();
 
-    return {
+    // Collect JMESPath hints from vars (stored by step handlers)
+    const jmespathHints = (vars['__jmespath_hints'] as string[]) || [];
+    const singleHint = vars['__jmespath_hint'] as string | undefined;
+    if (singleHint && !jmespathHints.includes(singleHint)) {
+      jmespathHints.push(singleHint);
+    }
+    // Deduplicate hints
+    const uniqueHints = [...new Set(jmespathHints)];
+
+    const result: RunFlowResult = {
       collectibles,
       meta: {
         url: finalUrl,
@@ -527,6 +536,13 @@ export async function runFlow(
         stepsTotal: steps.length,
       },
     };
+
+    // Only include _hints if there are any
+    if (uniqueHints.length > 0) {
+      result._hints = uniqueHints;
+    }
+
+    return result;
   } catch (error) {
     throw error;
   } finally {

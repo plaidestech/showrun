@@ -28,9 +28,16 @@ export class TaskPackRunner {
     });
 
     // Return just the RunResult part (without paths)
-    return {
+    const runResult: RunResult = {
       collectibles: result.collectibles,
       meta: result.meta,
     };
+
+    // Include hints if present
+    if (result._hints && result._hints.length > 0) {
+      runResult._hints = result._hints;
+    }
+
+    return runResult;
   }
 }

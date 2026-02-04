@@ -146,6 +146,11 @@ export interface RunResult {
     durationMs: number;
     notes?: string;
   };
+  /**
+   * Diagnostic hints from JSONPath operations (e.g., unsupported syntax, empty results).
+   * These help AI agents understand why data extraction may have failed.
+   */
+  _hints?: string[];
 }
 
 /**

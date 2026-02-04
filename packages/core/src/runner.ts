@@ -180,6 +180,11 @@ export async function runTaskPack(
           notes: `Executed ${flowResult.meta.stepsExecuted}/${flowResult.meta.stepsTotal} steps`,
         },
       };
+
+      // Propagate diagnostic hints if present
+      if (flowResult._hints && flowResult._hints.length > 0) {
+        result._hints = flowResult._hints;
+      }
     } else if (taskPack.run) {
       // Use imperative run function
       result = await taskPack.run(runContext, inputsWithDefaults);

@@ -426,7 +426,14 @@ export interface NetworkReplayStep extends BaseDslStep {
     saveAs?: string; // optional vars key for raw result
     response: {
       as: 'json' | 'text';
-      jsonPath?: string; // optional extraction from JSON
+      /**
+       * JMESPath expression for extracting data from JSON response.
+       * Examples: "results[*].name", "data.items[0]", "results[*].{id: id, name: name}"
+       * For backward compatibility, JSONPath-style "$." prefix is auto-stripped.
+       */
+      path?: string;
+      /** @deprecated Use `path` instead. Kept for backward compatibility. */
+      jsonPath?: string;
     };
   };
 }
@@ -439,13 +446,14 @@ export interface NetworkExtractStep extends BaseDslStep {
   params: {
     fromVar: string;
     as: 'json' | 'text';
-    jsonPath?: string;
     /**
-     * Transform each item in the extracted array.
-     * Keys are output field names, values are jsonPath expressions applied to each item.
-     * Example: { "name": "$.name", "url": "$.website" }
+     * JMESPath expression for extracting data from JSON.
+     * Examples: "results[*].name", "data.items[0]", "results[*].{id: id, name: name}"
+     * For backward compatibility, JSONPath-style "$." prefix is auto-stripped.
      */
-    transform?: Record<string, string>;
+    path?: string;
+    /** @deprecated Use `path` instead. Kept for backward compatibility. */
+    jsonPath?: string;
     out: string;
   };
 }
@@ -661,4 +669,9 @@ export interface RunFlowResult {
     stepsExecuted: number;
     stepsTotal: number;
   };
+  /**
+   * Diagnostic hints from JSONPath operations (e.g., unsupported syntax, empty results).
+   * These help AI agents understand why data extraction may have failed.
+   */
+  _hints?: string[];
 }
