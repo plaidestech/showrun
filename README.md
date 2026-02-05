@@ -38,17 +38,38 @@ Task Packs are designed to be:
 
 ## Quick Start
 
-### Using npx (Simplest)
+### From Git Clone
 
 ```bash
-# Start dashboard instantly (no installation needed)
-npx showrun dashboard --packs ./my-taskpacks
+# Clone the repository
+git clone https://github.com/OlymposHQ/flowforge
+cd flowforge
 
-# Run a task pack directly
-npx showrun run ./my-pack --inputs '{}'
+# Install dependencies (requires pnpm)
+pnpm install
 
-# Install camoufox browser (required on first run)
+# Approve native module builds if prompted
+pnpm approve-builds
+
+# Install camoufox browser (anti-detection Firefox)
 npx camoufox-js fetch
+
+# Build all packages
+pnpm build
+
+# Start the dashboard
+pnpm dashboard --packs ./taskpacks --headful
+```
+
+### Using npx (Coming Soon)
+
+> **Note:** `npx showrun` from npm is not yet available. The package will be published soon.
+> For now, use the git clone method above.
+
+```bash
+# Once published to npm:
+npx showrun dashboard --packs ./my-taskpacks
+npx showrun run ./my-pack --inputs '{}'
 ```
 
 ### Development Setup
@@ -56,6 +77,9 @@ npx camoufox-js fetch
 ```bash
 # Install dependencies (using pnpm)
 pnpm install
+
+# Approve native module builds if prompted
+pnpm approve-builds
 
 # Install camoufox browser
 npx camoufox-js fetch
@@ -67,15 +91,15 @@ pnpm build
 ### Run Example Task Packs
 
 ```bash
-# Run TypeScript example (requires build)
+# Run TypeScript example
 pnpm test:example
 
-# Run JSON-only example (no build needed!)
+# Run JSON-only example
 pnpm test:example-json
 
-# Or manually:
-node packages/harness/dist/cli.js run --pack ./taskpacks/example --inputs '{}'
-node packages/harness/dist/cli.js run --pack ./taskpacks/example-json --inputs '{}'
+# Or use the unified CLI directly:
+node packages/showrun/dist/cli.js run ./taskpacks/example --inputs '{}'
+node packages/showrun/dist/cli.js run ./taskpacks/example-json --inputs '{}'
 ```
 
 ## Creating a New Task Pack

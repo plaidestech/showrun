@@ -42,14 +42,6 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
   {
     type: 'function',
     function: {
-      name: 'editor_list_packs',
-      description: 'List all JSON Task Packs (id, name, version, description). Call when user asks about packs.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'editor_read_pack',
       description: 'Read a pack: returns taskpack.json and flow.json. MUST call first when packId is provided before proposing any flow changes.',
       parameters: {
@@ -780,10 +772,6 @@ export async function executeAgentTool(
 
   try {
     switch (internal) {
-      case 'list_packs': {
-        const result = await taskPackEditor.listPacks();
-        return wrap(JSON.stringify(result, null, 2));
-      }
       case 'read_pack': {
         const packId = args.packId as string;
         if (!packId) throw new Error('packId required');

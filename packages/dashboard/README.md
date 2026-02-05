@@ -115,7 +115,6 @@ The dashboard includes an AI agent for assisted flow creation. The agent has acc
 ### Editor Tools
 | Tool | Description |
 |------|-------------|
-| `editor_list_packs` | List all JSON Task Packs (id, name, version, description) |
 | `editor_read_pack(packId)` | Read pack contents (taskpack.json + flow.json) |
 | `editor_validate_flow(flowJsonText)` | Validate flow JSON syntax and schema |
 | `editor_apply_flow_patch(packId, op, ...)` | Apply patch to flow (append, insert, replace, delete) |
