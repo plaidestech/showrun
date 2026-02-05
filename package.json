@@ -4,8 +4,12 @@
   "description": "Task Pack framework for deterministic browser automations",
   "private": true,
   "type": "module",
+  "bin": {
+    "showrun": "./bin/showrun.js"
+  },
   "scripts": {
     "build": "pnpm -r --filter=!showrun build && pnpm --filter=showrun build",
+    "prepare": "pnpm build",
     "dev": "pnpm build && pnpm test:example",
     "test:example": "node packages/harness/dist/cli.js run --pack ./taskpacks/example --inputs '{}'",
     "test:example-json": "node packages/harness/dist/cli.js run --pack ./taskpacks/example-json --inputs '{}'",
