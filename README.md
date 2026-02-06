@@ -58,7 +58,7 @@ cd packages/dashboard && npx camoufox-js fetch && cd ../..
 pnpm build
 
 # Start the dashboard
-pnpm dashboard --packs ./taskpacks --headful
+pnpm dashboard --packs ./taskpacks_local --headful
 ```
 
 ### Using npx (Coming Soon)

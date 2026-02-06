@@ -46,4 +46,8 @@ showrun-once-cache/
 # Coverage
 coverage/
 
+# Local development task packs
+taskpacks_local/
+
+# DB files
 *.db*
