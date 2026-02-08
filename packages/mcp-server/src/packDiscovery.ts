@@ -37,10 +37,11 @@ export interface DiscoveredPack {
 
 /**
  * Converts a task pack ID to an MCP-safe tool name
- * Replaces non [a-zA-Z0-9._-] characters with underscores
+ * Replaces dots with dashes (some MCP clients reject dots), then
+ * replaces remaining non [a-zA-Z0-9_-] characters with underscores
  */
 export function packIdToToolName(packId: string): string {
-  return packId.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return packId.replace(/\./g, '-').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 /**

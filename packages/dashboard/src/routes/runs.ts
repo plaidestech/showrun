@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { resolve } from 'path';
 import type { DashboardContext } from '../types/context.js';
 import { createTokenChecker } from '../helpers/auth.js';
-import { runTaskPack } from '@showrun/core';
+import { runTaskPack, TaskPackLoader } from '@showrun/core';
 import { SocketLogger } from '../logger.js';
 
 export function createRunsRouter(ctx: DashboardContext): Router {
@@ -59,11 +59,14 @@ export function createRunsRouter(ctx: DashboardContext): Router {
       const logger = new SocketLogger(runDir, ctx.io, runId);
 
       try {
-        const result = await runTaskPack(packInfo.pack, inputs, {
+        // Reload pack from disk to get the latest flow.json
+        const freshPack = await TaskPackLoader.loadTaskPack(packInfo.path);
+        const result = await runTaskPack(freshPack, inputs, {
           runDir,
           logger,
           headless: !ctx.headful,
           profileId: packId,
+          packPath: packInfo.path,
         });
 
         ctx.runManager.updateRun(runId, {

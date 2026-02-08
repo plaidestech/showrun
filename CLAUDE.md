@@ -49,10 +49,10 @@ showrun serve --packs ./taskpacks
 showrun serve --packs ./taskpacks --http --port 3001
 
 # Pack management
-showrun pack create --dir ./taskpacks --id my.pack --name "My Pack"
-showrun pack validate --path ./taskpacks/my_pack
-showrun pack set-flow --path ./taskpacks/my_pack --flow '{"flow":[...]}'
-showrun pack set-meta --path ./taskpacks/my_pack --meta '{"description":"..."}'
+showrun pack create --dir ./taskpacks --id my-pack --name "My Pack"
+showrun pack validate --path ./taskpacks/my-pack
+showrun pack set-flow --path ./taskpacks/my-pack --flow '{"flow":[...]}'
+showrun pack set-meta --path ./taskpacks/my-pack --meta '{"description":"..."}'
 
 # MCP server utilities
 showrun mcp browser-inspector

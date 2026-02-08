@@ -81,8 +81,8 @@ export class TaskPackEditorWrapper {
     path: string;
   }> {
     // Validate pack ID format
-    if (!/^[a-zA-Z0-9._-]+$/.test(id)) {
-      throw new Error('Pack ID must contain only alphanumeric characters, dots, underscores, and hyphens');
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+      throw new Error('Pack ID must contain only alphanumeric characters, underscores, and hyphens');
     }
 
     // Check if pack already exists

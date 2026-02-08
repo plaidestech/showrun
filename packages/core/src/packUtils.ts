@@ -11,8 +11,8 @@ import { validateJsonTaskPack } from './jsonPackValidator.js';
  * Sanitize a pack ID to be safe for use as a directory name
  */
 export function sanitizePackId(packId: string): string {
-  // Replace invalid characters with underscores
-  return packId.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Replace dots with dashes (some MCP clients reject dots), then other invalid chars with underscores
+  return packId.replace(/\./g, '-').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 /**

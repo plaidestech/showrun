@@ -43,11 +43,11 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'editor_read_pack',
-      description: 'Read a pack: returns taskpack.json and flow.json. MUST call first when packId is provided before proposing any flow changes.',
+      description: 'Read the linked pack: returns taskpack.json and flow.json. MUST call first before proposing any flow changes.',
       parameters: {
         type: 'object',
-        properties: { packId: { type: 'string', description: 'Pack ID' } },
-        required: ['packId'],
+        properties: {},
+        required: [],
       },
     },
   },
@@ -55,11 +55,11 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'editor_list_secrets',
-      description: 'List secrets for a pack. Returns secret names, descriptions, and whether values are set (no actual values for security). Use {{secret.NAME}} in templates to reference secret values.',
+      description: 'List secrets for the linked pack. Returns secret names, descriptions, and whether values are set (no actual values for security). Use {{secret.NAME}} in templates to reference secret values.',
       parameters: {
         type: 'object',
-        properties: { packId: { type: 'string', description: 'Pack ID' } },
-        required: ['packId'],
+        properties: {},
+        required: [],
       },
     },
   },
@@ -80,11 +80,10 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
     function: {
       name: 'editor_apply_flow_patch',
       description:
-        'Apply ONE patch to flow.json. Pass flat params: packId, op, and for the op: index?, step?, collectibles?, inputs? at top level (no nested patch object). append: op + step. insert: op + index + step. replace: op + index + step. delete: op + index. update_collectibles: op + collectibles. update_inputs: op + inputs. Step = { id, type, params }. Templating: Nunjucks ({{inputs.x}}, {{vars.x}}; use {{ inputs.x | urlencode }} for URL/query values). Supported types: navigate, wait_for, click, fill, extract_text, extract_attribute, extract_title, sleep, assert, set_var, network_find (where, pick, saveAs; waitForMs), network_replay (requestId MUST be a template like {{vars.<saveAs>}} where <saveAs> is the variable from the preceding network_find step—never use a literal request ID; response.path uses JMESPath), network_extract (fromVar, as, path (JMESPath expression, e.g. "results[*].{id: id, name: name}"), out), select_option (target, value: string|{label}|{index}|array), press_key (key, target?, times?, delayMs?), upload_file (target, files: string|array), frame (frame: string|{name}|{url}, action: enter|exit), new_tab (url?, saveTabIndexAs?), switch_tab (tab: number|last|previous, closeCurrentTab?).',
+        'Apply ONE patch to the linked pack\'s flow.json. Pass flat params: op, and for the op: index?, step?, collectibles?, inputs? at top level (no nested patch object). append: op + step. insert: op + index + step. replace: op + index + step. delete: op + index. update_collectibles: op + collectibles. update_inputs: op + inputs. Step = { id, type, params }. Templating: Nunjucks ({{inputs.x}}, {{vars.x}}; use {{ inputs.x | urlencode }} for URL/query values). Supported types: navigate, wait_for, click, fill, extract_text, extract_attribute, extract_title, sleep, assert, set_var, network_find (where, pick, saveAs; waitForMs), network_replay (requestId MUST be a template like {{vars.<saveAs>}} where <saveAs> is the variable from the preceding network_find step—never use a literal request ID; response.path uses JMESPath), network_extract (fromVar, as, path (JMESPath expression, e.g. "results[*].{id: id, name: name}"), out), select_option (target, value: string|{label}|{index}|array), press_key (key, target?, times?, delayMs?), upload_file (target, files: string|array), frame (frame: string|{name}|{url}, action: enter|exit), new_tab (url?, saveTabIndexAs?), switch_tab (tab: number|last|previous, closeCurrentTab?).',
       parameters: {
         type: 'object',
         properties: {
-          packId: { type: 'string', description: 'Pack ID' },
           op: {
             type: 'string',
             enum: ['append', 'insert', 'replace', 'delete', 'update_collectibles', 'update_inputs'],
@@ -121,7 +120,7 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
             },
           },
         },
-        required: ['packId', 'op'],
+        required: ['op'],
       },
     },
   },
@@ -150,14 +149,13 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
     function: {
       name: 'editor_run_pack',
       description:
-        'Run a task pack with given inputs. Returns success (boolean), collectibles (extracted data), meta (url, durationMs, notes), error (if failed), plus runId, runDir, eventsPath, artifactsDir. Use success and collectibles to verify test results. Do not use for "run flow in the browser" or "execute steps in the open browser"—use browser_* tools (browser_goto, browser_click, browser_type, etc.) to execute steps in the current browser session instead.',
+        'Run the linked pack with given inputs. Returns success (boolean), collectibles (extracted data), meta (url, durationMs, notes), error (if failed), plus runId, runDir, eventsPath, artifactsDir. Use success and collectibles to verify test results. Do not use for "run flow in the browser" or "execute steps in the open browser"—use browser_* tools (browser_goto, browser_click, browser_type, etc.) to execute steps in the current browser session instead.',
       parameters: {
         type: 'object',
         properties: {
-          packId: { type: 'string' },
           inputs: { type: 'object', description: 'Input values object' },
         },
-        required: ['packId', 'inputs'],
+        required: ['inputs'],
       },
     },
   },
@@ -773,14 +771,14 @@ export async function executeAgentTool(
   try {
     switch (internal) {
       case 'read_pack': {
-        const packId = args.packId as string;
-        if (!packId) throw new Error('packId required');
+        const packId = (args.packId as string) || ctx.packId;
+        if (!packId) throw new Error('No pack linked to this conversation');
         const result = await taskPackEditor.readPack(packId);
         return wrap(JSON.stringify(result, null, 2));
       }
       case 'list_secrets': {
-        const packId = args.packId as string;
-        if (!packId) throw new Error('packId required');
+        const packId = (args.packId as string) || ctx.packId;
+        if (!packId) throw new Error('No pack linked to this conversation');
         // Get pack path from editor
         const packInfo = await taskPackEditor.readPack(packId);
         // Extract path from taskpackJson - we need to get it from the wrapper
@@ -800,9 +798,9 @@ export async function executeAgentTool(
         return wrap(JSON.stringify(result, null, 2));
       }
       case 'apply_flow_patch': {
-        const packId = args.packId as string;
-        if (!packId) throw new Error('packId required');
-        // Accept flat params (packId, op, index?, step?, collectibles?, inputs?) or legacy nested patch
+        const packId = (args.packId as string) || ctx.packId;
+        if (!packId) throw new Error('No pack linked to this conversation');
+        // Accept flat params (op, index?, step?, collectibles?, inputs?) or legacy nested patch
         const legacyPatch = args.patch as Record<string, unknown> | undefined;
         const patch: Record<string, unknown> = legacyPatch
           ? { ...legacyPatch }
@@ -821,9 +819,9 @@ export async function executeAgentTool(
         // Check if conversation already has a linked pack
         if (ctx.packId) {
           return wrap(JSON.stringify({
-            error: `A pack is already linked to this conversation: "${ctx.packId}". Do not create a new pack. Use editor_read_pack("${ctx.packId}") to see the current flow, then use editor_apply_flow_patch to modify it.`,
+            error: `A pack is already linked to this conversation: "${ctx.packId}". Do not create a new pack. Use editor_read_pack() to see the current flow, then use editor_apply_flow_patch to modify it.`,
             existingPackId: ctx.packId,
-            suggestion: 'Call editor_read_pack first to understand the existing flow, then use editor_apply_flow_patch to make changes.',
+            suggestion: 'Call editor_read_pack() first to understand the existing flow, then use editor_apply_flow_patch to make changes.',
           }, null, 2));
         }
 
@@ -839,9 +837,9 @@ export async function executeAgentTool(
         }, null, 2));
       }
       case 'run_pack': {
-        const packId = args.packId as string;
+        const packId = (args.packId as string) || ctx.packId;
         const inputs = (args.inputs as Record<string, unknown>) || {};
-        if (!packId) throw new Error('packId required');
+        if (!packId) throw new Error('No pack linked to this conversation');
         const result = await taskPackEditor.runPack(packId, inputs);
         const fullJson = JSON.stringify(result, null, 2);
         return wrap(truncateToolOutput(fullJson, 'run_pack result'));

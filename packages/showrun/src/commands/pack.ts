@@ -93,8 +93,8 @@ export async function cmdPackCreate(args: string[]): Promise<void> {
   }
 
   // Validate pack ID format
-  if (!/^[a-zA-Z0-9._-]+$/.test(packId)) {
-    throw new Error('Pack ID must contain only alphanumeric characters, dots, underscores, and hyphens');
+  if (!/^[a-zA-Z0-9_-]+$/.test(packId)) {
+    throw new Error('Pack ID must contain only alphanumeric characters, underscores, and hyphens');
   }
 
   // Sanitize and create directory
@@ -362,9 +362,9 @@ Commands:
     --meta <json|file> Metadata JSON string or file path (required)
 
 Examples:
-  showrun pack create --dir ./taskpacks --id my.pack --name "My Pack"
-  showrun pack validate --path ./taskpacks/my_pack
-  showrun pack set-flow --path ./taskpacks/my_pack --flow '{"flow":[...]}'
-  showrun pack set-meta --path ./taskpacks/my_pack --meta '{"description":"..."}'
+  showrun pack create --dir ./taskpacks --id my-pack --name "My Pack"
+  showrun pack validate --path ./taskpacks/my-pack
+  showrun pack set-flow --path ./taskpacks/my-pack --flow '{"flow":[...]}'
+  showrun pack set-meta --path ./taskpacks/my-pack --meta '{"description":"..."}'
 `);
 }

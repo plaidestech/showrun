@@ -30,7 +30,7 @@ const INITIALIZER_TOOL: ToolDef = {
       properties: {
         id: {
           type: 'string',
-          description: 'Pack ID in reverse domain notation (e.g., "gmail.email.scraper", "yc.company.collector")',
+          description: 'Pack ID using dash-separated segments (e.g., "gmail-email-scraper", "yc-company-collector")',
         },
         name: {
           type: 'string',
@@ -45,8 +45,8 @@ const INITIALIZER_TOOL: ToolDef = {
 const INITIALIZER_SYSTEM_PROMPT = `You are a pack naming assistant. Given the user's automation request, create a task pack with an appropriate ID and name.
 
 Rules for pack ID:
-- Use reverse domain notation: site.purpose.action (e.g., "gmail.email.scraper", "yc.companies.collector")
-- Lowercase, alphanumeric, dots and hyphens only
+- Use dash-separated segments: site-purpose-action (e.g., "gmail-email-scraper", "yc-companies-collector")
+- Lowercase, alphanumeric and hyphens only
 - Keep it short but descriptive
 
 Rules for pack name:
@@ -84,19 +84,29 @@ async function runPackInitializer(
     } catch {
       // ignore parse errors
     }
-    packId = args.id || `pack.${Date.now().toString(36)}`;
+    packId = args.id || `pack-${Date.now().toString(36)}`;
     packName = args.name || 'New Automation';
   } else {
     // Fallback if LLM didn't call tool
-    packId = `pack.${Date.now().toString(36)}`;
+    packId = `pack-${Date.now().toString(36)}`;
     packName = userMessage.slice(0, 60) || 'New Automation';
   }
 
-  // Sanitize pack ID: lowercase, only alphanumeric/dots/hyphens/underscores
-  packId = packId.toLowerCase().replace(/[^a-z0-9._-]/g, '.');
+  // Sanitize pack ID: lowercase, only alphanumeric/hyphens/underscores (no dots)
+  packId = packId.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
-  // Create pack via editor wrapper
-  const packResult = await editor.createPack(packId, packName);
+  // Create pack via editor wrapper (retry with suffix if ID already exists)
+  let packResult;
+  try {
+    packResult = await editor.createPack(packId, packName);
+  } catch (createErr: any) {
+    if (createErr?.message?.includes('already exists')) {
+      packId = `${packId}-${Date.now().toString(36).slice(-4)}`;
+      packResult = await editor.createPack(packId, packName);
+    } else {
+      throw createErr;
+    }
+  }
 
   // Link to conversation in database
   updateConversation(convId, { packId });
@@ -241,7 +251,23 @@ export function createTeachRouter(ctx: DashboardContext): Router {
             ctx.llmProvider
           );
           effectivePackId = packInfo.id;
+        } catch (err) {
+          console.error('[PackInit] LLM-based init failed, using fallback:', err);
+          // Fallback: create pack with deterministic ID, no LLM needed
+          try {
+            const fallbackId = `pack-${Date.now().toString(36)}`;
+            const fallbackName = firstUserMsg.slice(0, 60) || 'New Automation';
+            await ctx.taskPackEditor.createPack(fallbackId, fallbackName);
+            updateConversation(conversationId, { packId: fallbackId });
+            effectivePackId = fallbackId;
+            console.log(`[PackInit] Fallback pack created: "${fallbackId}"`);
+          } catch (fallbackErr) {
+            console.error('[PackInit] Fallback pack creation also failed:', fallbackErr);
+            // Only now do we continue without a pack
+          }
+        }
 
+        if (effectivePackId) {
           // Emit update so frontend knows pack is linked
           ctx.io.emit('conversations:updated', getAllConversations());
           // Also emit packs:updated since a new pack was created
@@ -252,9 +278,6 @@ export function createTeachRouter(ctx: DashboardContext): Router {
             }
             ctx.io.emit('packs:updated', ctx.packMap.size);
           });
-        } catch (err) {
-          console.error('[PackInit] Failed to create pack:', err);
-          // Continue without pack - agent can still run, just no secrets
         }
       } else if (conversation?.packId) {
         // Use existing pack from conversation
@@ -264,7 +287,7 @@ export function createTeachRouter(ctx: DashboardContext): Router {
 
     let systemPrompt = ctx.systemPrompt;
     if (effectivePackId) {
-      systemPrompt = `${systemPrompt}\n\n**Pack "${effectivePackId}" is linked to this conversation. Use editor_read_pack("${effectivePackId}") to see its current state, then use editor_apply_flow_patch to modify it.**`;
+      systemPrompt = `${systemPrompt}\n\n**Pack "${effectivePackId}" is linked to this conversation. Use editor_read_pack() to see its current state, then use editor_apply_flow_patch to modify it. You do not need to pass packId — it is automatic.**`;
     }
     // Note: Browser sessions are now managed automatically per-conversation.
     // No need to inform the AI about session management.

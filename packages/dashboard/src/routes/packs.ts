@@ -42,9 +42,9 @@ export function createPacksRouter(ctx: DashboardContext): Router {
     }
 
     // Validate pack ID format
-    if (!/^[a-zA-Z0-9._-]+$/.test(id)) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
       return res.status(400).json({
-        error: 'Pack ID must contain only alphanumeric characters, dots, underscores, and hyphens',
+        error: 'Pack ID must contain only alphanumeric characters, underscores, and hyphens',
       });
     }
 

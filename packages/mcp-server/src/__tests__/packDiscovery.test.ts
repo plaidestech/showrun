@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { packIdToToolName } from '../packDiscovery.js';
 
 describe('packIdToToolName', () => {
-  it('replaces dots with underscores', () => {
-    expect(packIdToToolName('example.site.collector')).toBe('example.site.collector');
+  it('replaces dots with dashes', () => {
+    expect(packIdToToolName('example.site.collector')).toBe('example-site-collector');
   });
 
   it('preserves valid characters', () => {
@@ -46,11 +46,11 @@ describe('packIdToToolName', () => {
     expect(packIdToToolName('my_task_pack')).toBe('my_task_pack');
   });
 
-  it('preserves dots', () => {
-    expect(packIdToToolName('com.example.pack')).toBe('com.example.pack');
+  it('converts dots to dashes', () => {
+    expect(packIdToToolName('com.example.pack')).toBe('com-example-pack');
   });
 
-  it('handles mixed valid and invalid characters', () => {
-    expect(packIdToToolName('my-pack.v1@beta!test')).toBe('my-pack.v1_beta_test');
+  it('handles mixed valid and invalid characters with dots', () => {
+    expect(packIdToToolName('my-pack.v1@beta!test')).toBe('my-pack-v1_beta_test');
   });
 });

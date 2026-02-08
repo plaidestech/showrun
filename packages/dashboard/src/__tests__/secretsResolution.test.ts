@@ -44,7 +44,7 @@ describe('Secrets Resolution Integration', () => {
   let runsDir: string;
   let taskPackEditor: TaskPackEditorWrapper;
 
-  const TEST_PACK_ID = 'test.secrets.pack';
+  const TEST_PACK_ID = 'test-secrets-pack';
   const CONVERSATION_ID = 'conv-123';
 
   beforeEach(async () => {
@@ -139,7 +139,7 @@ describe('Secrets Resolution Integration', () => {
       // Create pack first
       const createResult = await executeAgentTool(
         'editor_create_pack',
-        { id: 'test.no.secrets', name: 'Test Pack No Secrets' },
+        { id: 'test-no-secrets', name: 'Test Pack No Secrets' },
         { taskPackEditor, conversationId: CONVERSATION_ID, packId: null }
       );
       const createData = JSON.parse(createResult.stringForLlm);
@@ -422,19 +422,19 @@ describe('Secrets Resolution Integration', () => {
       const ctx: AgentToolContext = {
         taskPackEditor,
         conversationId: CONVERSATION_ID,
-        packId: 'existing.pack.id', // Already linked!
+        packId: 'existing-pack-id', // Already linked!
       };
 
       // Try to create another pack
       const result = await executeAgentTool(
         'editor_create_pack',
-        { id: 'another.pack', name: 'Another Pack' },
+        { id: 'another-pack', name: 'Another Pack' },
         ctx
       );
 
       const parsed = JSON.parse(result.stringForLlm);
       expect(parsed.error).toContain('A pack is already linked');
-      expect(parsed.existingPackId).toBe('existing.pack.id');
+      expect(parsed.existingPackId).toBe('existing-pack-id');
     });
   });
 
