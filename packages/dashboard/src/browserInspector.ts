@@ -1225,8 +1225,24 @@ export async function getDomSnapshot(
 
   // YAML format: Use Playwright's built-in ARIA snapshot
   if (format === 'yaml') {
-    // Get the ARIA snapshot from the body element
-    const ariaSnapshot = await page.locator('body').ariaSnapshot();
+    // Get the ARIA snapshot from the body element.
+    // Use a generous timeout but don't block forever on SPAs that never fully "finish" navigating.
+    let ariaSnapshot: string;
+    try {
+      ariaSnapshot = await page.locator('body').ariaSnapshot({ timeout: 15_000 });
+    } catch (snapshotErr: any) {
+      // If navigation is still in progress, wait for domcontentloaded and retry
+      if (snapshotErr?.message?.includes('navigation')) {
+        try {
+          await page.waitForLoadState('domcontentloaded', { timeout: 10_000 });
+        } catch {
+          // ignore — best-effort wait
+        }
+        ariaSnapshot = await page.locator('body').ariaSnapshot({ timeout: 15_000 });
+      } else {
+        throw snapshotErr;
+      }
+    }
 
     // Add element refs and optionally limit depth
     const snapshotWithRefs = addElementRefs(ariaSnapshot, maxDepth);
