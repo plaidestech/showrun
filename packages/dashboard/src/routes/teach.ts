@@ -95,13 +95,43 @@ async function runPackInitializer(
   // Sanitize pack ID: lowercase, only alphanumeric/hyphens/underscores (no dots)
   packId = packId.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
-  // Create pack via editor wrapper (retry with suffix if ID already exists)
+  // Create pack via editor wrapper (retry with LLM if ID already exists)
   let packResult;
   try {
     packResult = await editor.createPack(packId, packName);
   } catch (createErr: any) {
     if (createErr?.message?.includes('already exists')) {
-      packId = `${packId}-${Date.now().toString(36).slice(-4)}`;
+      // Gather existing IDs so the LLM can avoid them
+      const existingPacks = await editor.listPacks();
+      const takenIds = existingPacks.map((p: { id: string }) => p.id);
+
+      const retryResult = await (provider as any).chatWithTools({
+        systemPrompt: INITIALIZER_SYSTEM_PROMPT,
+        messages: [
+          { role: 'user', content: userMessage },
+          {
+            role: 'user',
+            content: `The ID "${packId}" is already taken. Existing pack IDs: ${takenIds.join(', ')}. Pick a DIFFERENT id and name.`,
+          },
+        ],
+        tools: [INITIALIZER_TOOL],
+      });
+
+      if (retryResult.toolCalls && retryResult.toolCalls.length > 0) {
+        const tc = retryResult.toolCalls[0];
+        let args: { id?: string; name?: string } = {};
+        try { args = JSON.parse(tc.arguments || '{}'); } catch { /* ignore */ }
+        if (args.id) {
+          packId = args.id.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+        } else {
+          packId = `pack-${Date.now().toString(36)}`;
+        }
+        if (args.name) packName = args.name;
+      } else {
+        // LLM didn't call tool on retry — use timestamp fallback
+        packId = `pack-${Date.now().toString(36)}`;
+      }
+
       packResult = await editor.createPack(packId, packName);
     } else {
       throw createErr;
