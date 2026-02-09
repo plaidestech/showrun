@@ -35,11 +35,18 @@ export function createConversationsRouter(ctx: DashboardContext): Router {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { title, description } = req.body;
+    const { title, description, packId } = req.body;
     const conversationTitle = title || 'New Conversation';
 
     try {
       const conversation = createConversation(conversationTitle, description || null);
+
+      // If packId provided, link it to the new conversation immediately
+      if (packId) {
+        updateConversation(conversation.id, { packId });
+        conversation.packId = packId;
+      }
+
       ctx.io.emit('conversations:updated', getAllConversations());
       res.json(conversation);
     } catch (error) {

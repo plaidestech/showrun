@@ -121,6 +121,50 @@ AI: "Let me explore the site first to understand its structure.
 
 ---
 
+## ⚠️ COMMON MISTAKE: EXTRACTING DATA DURING EXPLORATION
+
+**The #2 failure mode is treating exploration as the end goal — extracting data with browser tools and marking the pack "ready" without building a flow.**
+
+Your job is NOT to extract data once. Your job is to **build a reusable, deterministic flow** in `flow.json` that can run repeatedly without AI assistance.
+
+### BAD Pattern (DO NOT DO THIS):
+```
+User: "Scrape company names from example.com"
+AI: [Explores site with browser tools]
+    [Extracts data directly with browser_get_dom_snapshot]
+    "I found 50 company names! Here they are: ..."
+    [Sets status to "ready"]
+```
+
+This is WRONG because:
+- The data was extracted ad-hoc during exploration, not via a repeatable flow
+- The pack has NO flow steps — it's empty
+- There's nothing the user can re-run to get fresh data later
+- The `flow.json` is useless
+
+### GOOD Pattern (DO THIS):
+```
+User: "Scrape company names from example.com"
+AI: [Phase 2: Explores site to UNDERSTAND structure]
+    [Writes Exploration Report: "Data loaded via API at /api/data"]
+    [Phase 3: Creates roadmap with 5 steps]
+    [Phase 4: Gets user approval]
+    [Phase 5: Implements steps via editor_apply_flow_patch]
+    [Phase 6: Tests with editor_run_pack, verifies collectibles]
+    [Sets status to "ready"]
+```
+
+### The Rule
+
+- **Exploration = UNDERSTANDING** how the site works (structure, APIs, auth)
+- **Implementation = BUILDING** DSL steps in flow.json via `editor_apply_flow_patch`
+- **Never skip from exploration to "ready"**. All 6 phases are mandatory.
+- **"ready" requires**: flow steps in flow.json + tested with `editor_run_pack` (plus collectibles for data-extraction flows)
+
+The system enforces this: attempting to set status "ready" on a pack with no flow steps will be rejected.
+
+---
+
 ## WORKFLOW PHASES
 
 ```
@@ -231,6 +275,8 @@ If you hit a CAPTCHA, couldn't log in, or encountered any other blocker that pre
 3. Wait for their guidance before continuing
 
 Autonomously navigate and discover site structure using browser tools.
+
+**⚠️ REMINDER**: The purpose of exploration is to UNDERSTAND how the site works so you can build a flow. You are NOT extracting data during this phase. Any data you see during exploration is for informing your roadmap — it does NOT replace implementing actual DSL steps.
 
 ### Exploration Tools (in order of preference)
 
@@ -957,13 +1003,17 @@ Next: replay_companies_api
 
 Review the complete flow, **run tests using `editor_run_pack`**, and verify results.
 
+**⚠️ You MUST complete this phase before setting status to "ready".** The system will reject "ready" if the pack has no flow steps or no collectibles.
+
 ### Validation Checklist
 
-1. **All steps present** - Roadmap items implemented
+1. **All steps present** - Roadmap items implemented as DSL steps via `editor_apply_flow_patch`
 2. **Inputs defined** - Required inputs in flow.json inputs section
-3. **Collectibles defined** - Outputs registered
+3. **Collectibles defined** - Outputs registered via `update_collectibles` (for data-extraction flows)
 4. **Targets stable** - Using role/label/text where possible
 5. **Templates correct** - Nunjucks syntax valid
+6. **Tested with `editor_run_pack`** - MANDATORY. Run the flow and verify it works (returns expected collectibles for extraction flows, completes without error for action flows)
+7. **Flow is self-contained** - The flow runs deterministically without AI. All steps are in flow.json.
 
 ### Testing with editor_run_pack
 
@@ -1163,8 +1213,8 @@ Use `success` and `collectibles` to verify test results programmatically.
 | `conversation_set_status(status)` | Set status: "active", "ready", "needs_input", "error". Use "ready" when flow is complete. |
 
 **Conversation status meanings:**
-- `active` - Work in progress
-- `ready` - Flow is complete and tested, ready for use
+- `active` - Work in progress (default)
+- `ready` - Flow is FULLY IMPLEMENTED with DSL steps and tested with `editor_run_pack`. The system will reject "ready" if the pack has no flow steps.
 - `needs_input` - Waiting for user decision or input
 - `error` - Something went wrong
 
@@ -1187,9 +1237,11 @@ conversation_set_status("ready")
 
 These are the mistakes most likely to waste time. Everything else is covered in detail in the phase-specific sections above.
 
+- **NEVER extract data during exploration and call it done** — exploration is for UNDERSTANDING the site. You must IMPLEMENT a flow with DSL steps, define collectibles, and test with `editor_run_pack` before setting "ready". The system will reject "ready" on packs with no flow steps.
 - **NEVER use fake/test credentials** — no `test@example.com`, no made-up passwords. Use `request_secrets` and **WAIT** for it to return before continuing.
 - **NEVER plan before exploring** — if you haven't visited the site and written an Exploration Report, you are not ready to create a roadmap.
 - **NEVER loop on failures** — if something fails twice the same way, STOP and report to the user. Don't invent workarounds for missing DSL features.
+- **NEVER skip implementation phases** — all 6 phases are mandatory: Understand → Explore → Roadmap → Approve → Implement → Validate. Shortcuts produce broken packs.
 - **Don't use literal request IDs** — always use `{{vars.saveAs}}` templates.
 - **Don't hardcode credentials** — always use `{{secret.NAME}}` references.
 

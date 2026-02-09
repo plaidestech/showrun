@@ -4,7 +4,7 @@ import { createTokenChecker } from '../helpers/auth.js';
 import { TaskPackLoader } from '@showrun/core';
 import { discoverPacks } from '@showrun/mcp-server';
 import { proposeStep, type ProposeStepRequest } from '../teachMode.js';
-import { updateConversation, getConversation, getAllConversations } from '../db.js';
+import { updateConversation, getConversation, getAllConversations, getMessagesForConversation } from '../db.js';
 import type { ChatMessage, ToolCall, StreamEvent, ChatWithToolsResult, ToolDef } from '../llm/provider.js';
 import {
   MAIN_AGENT_TOOL_DEFINITIONS,
@@ -12,7 +12,7 @@ import {
   type AgentToolContext,
 } from '../agentTools.js';
 import { TaskPackEditorWrapper } from '../mcpWrappers.js';
-import { summarizeIfNeeded, estimateTotalTokens } from '../contextManager.js';
+import { summarizeIfNeeded, estimateTotalTokens, forceSummarize, type AgentMessage } from '../contextManager.js';
 import { createLlmProvider } from '../llm/index.js';
 
 // MAX_NON_EDITOR_ITERATIONS: limits consecutive browser-only rounds (set to 0 to disable)
@@ -683,6 +683,57 @@ export function createTeachRouter(ctx: DashboardContext): Router {
       message: 'Secrets recorded. Agent will continue automatically.',
       secretsProvided: secretsList,
     });
+  });
+
+  // REST API: Force context summarization
+  router.post('/api/teach/summarize', async (req: Request, res: Response) => {
+    if (!requireToken(req)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!ctx.llmProvider) {
+      return res.status(503).json({ error: 'LLM provider not configured' });
+    }
+
+    const { conversationId } = req.body as { conversationId?: string };
+    if (!conversationId) {
+      return res.status(400).json({ error: 'conversationId is required' });
+    }
+
+    const conversation = getConversation(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    try {
+      const dbMessages = getMessagesForConversation(conversationId);
+      // Build agent message array (user/assistant only)
+      const agentMessages: AgentMessage[] = dbMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      if (agentMessages.length === 0) {
+        return res.json({ wasSummarized: false, tokensBefore: 0, tokensAfter: 0 });
+      }
+
+      const systemPrompt = ctx.systemPrompt;
+      const result = await forceSummarize(
+        systemPrompt,
+        agentMessages,
+        ctx.llmProvider,
+        conversationId
+      );
+
+      res.json({
+        wasSummarized: result.wasSummarized,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   // REST API: Apply flow patch (Teach Mode)

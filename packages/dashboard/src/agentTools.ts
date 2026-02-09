@@ -489,7 +489,7 @@ export const MCP_AGENT_TOOL_DEFINITIONS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'conversation_set_status',
-      description: 'Set the conversation status. Use "ready" when the flow is complete and working, "needs_input" when waiting for user decision, "error" on failure. Status defaults to "active" during work.',
+      description: 'Set the conversation status. Use "ready" ONLY when the flow has been fully implemented with DSL steps and tested with editor_run_pack. The pack must have actual flow steps — extracting data during exploration does NOT count. Use "needs_input" when waiting for user decision, "error" on failure. Status defaults to "active" during work.',
       parameters: {
         type: 'object',
         properties: {
@@ -1038,6 +1038,27 @@ export async function executeAgentTool(
         }
         if (!ctx.conversationId) {
           return wrap(JSON.stringify({ warning: 'No conversation context, status not saved but noted' }));
+        }
+
+        // Guard: "ready" requires a pack with actual flow steps and collectibles
+        if (status === 'ready') {
+          if (!ctx.packId) {
+            return wrap(JSON.stringify({
+              error: 'Cannot set status to "ready" without a linked pack. Create a pack and implement flow steps first.',
+            }));
+          }
+          try {
+            const { flowJson } = await ctx.taskPackEditor.readPack(ctx.packId);
+            const stepCount = flowJson?.flow?.length ?? 0;
+            if (stepCount === 0) {
+              return wrap(JSON.stringify({
+                error: `Cannot set status to "ready": the pack "${ctx.packId}" has 0 flow steps. You must implement DSL steps in the flow using editor_apply_flow_patch before marking as ready. Exploration alone is not enough — the goal is a reusable, deterministic flow.`,
+              }));
+            }
+          } catch (readErr) {
+            console.warn(`[Agent] Could not verify pack "${ctx.packId}" for ready guard:`, readErr);
+            // If we can't read the pack, allow the status change (don't block on read errors)
+          }
         }
 
         // Auto-close browser when pack is ready

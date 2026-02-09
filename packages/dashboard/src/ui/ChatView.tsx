@@ -5,6 +5,7 @@ import SecretsPanel from './SecretsPanel.js';
 import SecretsRequestModal from './SecretsRequestModal.js';
 import VersionPanel from './VersionPanel.js';
 import McpUsageModal from './McpUsageModal.js';
+import { parseCommand, findCommand, COMMAND_REGISTRY, type CommandContext } from './chatCommands.js';
 
 export interface Message {
   id: string;
@@ -48,6 +49,7 @@ interface ChatViewProps {
   packs?: Array<{ id: string; path: string; name: string }>;
   onConversationUpdate?: (updates: Partial<Conversation>) => void;
   onNewMessage?: (message: Message) => void;
+  onCreateConversationWithPack?: (packId: string) => Promise<void>;
 }
 
 export default function ChatView({
@@ -56,6 +58,7 @@ export default function ChatView({
   packs,
   onConversationUpdate,
   onNewMessage,
+  onCreateConversationWithPack,
 }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -203,9 +206,72 @@ export default function ChatView({
     }
   };
 
+  const addSystemMessage = (content: string) => {
+    const msg: Message = {
+      id: `sys-${Date.now()}`,
+      role: 'system',
+      content,
+      createdAt: Date.now(),
+    };
+    setMessages((prev) => [...prev, msg]);
+  };
+
   const handleSend = async () => {
     const text = inputValue.trim();
     if (!text || isLoading || !conversation) return;
+
+    // --- Slash command interception ---
+    const parsed = parseCommand(text);
+    if (parsed) {
+      const cmd = findCommand(parsed.command);
+      if (cmd) {
+        // Show the user's command in chat (ephemeral, not saved to DB)
+        const userMsg: Message = {
+          id: `cmd-${Date.now()}`,
+          role: 'user',
+          content: text,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        setInputValue('');
+
+        const cmdCtx: CommandContext = {
+          conversation: conversation ? {
+            id: conversation.id,
+            title: conversation.title,
+            packId: conversation.packId,
+            status: conversation.status,
+          } : null,
+          token,
+          messages,
+          addSystemMessage,
+          setMessages,
+          onCreateConversation: onCreateConversationWithPack || (async () => {}),
+        };
+
+        try {
+          const result = await cmd.execute(parsed.args, cmdCtx);
+          if (result) {
+            addSystemMessage(result);
+          }
+        } catch (err) {
+          addSystemMessage(`Command error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        return;
+      } else {
+        // Unknown command
+        setInputValue('');
+        const userMsg: Message = {
+          id: `cmd-${Date.now()}`,
+          role: 'user',
+          content: text,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        addSystemMessage(`Unknown command \`/${parsed.command}\`. Type **/help** to see available commands.`);
+        return;
+      }
+    }
 
     const userMessage: Message = {
       id: `temp-${Date.now()}`,

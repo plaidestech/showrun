@@ -168,12 +168,13 @@ export async function summarizeIfNeeded<T extends AgentMessage>(
   systemPrompt: string,
   messages: T[],
   llmProvider: LlmProvider,
-  sessionKey?: string
+  sessionKey?: string,
+  options?: { force?: boolean }
 ): Promise<{ messages: T[]; wasSummarized: boolean; tokensBefore: number; tokensAfter: number }> {
   const tokensBefore = estimateTotalTokens(systemPrompt, messages);
 
-  // Check if we need to summarize
-  if (tokensBefore < TOKEN_LIMIT_SOFT) {
+  // Check if we need to summarize (skip check when force is true)
+  if (!options?.force && tokensBefore < TOKEN_LIMIT_SOFT) {
     return { messages, wasSummarized: false, tokensBefore, tokensAfter: tokensBefore };
   }
 
@@ -305,6 +306,19 @@ export const GET_PLAN_TOOL_DEFINITION = {
     },
   },
 };
+
+/**
+ * Force summarization regardless of token count.
+ * Convenience wrapper around summarizeIfNeeded with force: true.
+ */
+export async function forceSummarize<T extends AgentMessage>(
+  systemPrompt: string,
+  messages: T[],
+  llmProvider: LlmProvider,
+  sessionKey?: string
+): Promise<{ messages: T[]; wasSummarized: boolean; tokensBefore: number; tokensAfter: number }> {
+  return summarizeIfNeeded(systemPrompt, messages, llmProvider, sessionKey, { force: true });
+}
 
 /**
  * Execute plan tools

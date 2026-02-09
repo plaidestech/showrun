@@ -277,6 +277,33 @@ function App() {
     }
   };
 
+  const handleNewChatWithPack = async (packId: string) => {
+    if (!config) return;
+
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-showrun-token': config.token,
+        },
+        body: JSON.stringify({ title: 'New Conversation', packId }),
+      });
+
+      if (res.ok) {
+        const newConv = (await res.json()) as Conversation;
+        setConversations((prev) => {
+          if (prev.some((c) => c.id === newConv.id)) return prev;
+          return [newConv, ...prev];
+        });
+        setSelectedConversationId(newConv.id);
+        setActiveView('chat');
+      }
+    } catch (err) {
+      console.error('Failed to create conversation with pack:', err);
+    }
+  };
+
   const handleConversationUpdate = (updates: Partial<Conversation>) => {
     if (!selectedConversation) return;
     setSelectedConversation((prev) => (prev ? { ...prev, ...updates } : null));
@@ -317,6 +344,7 @@ function App() {
             token={config.token}
             packs={packs}
             onConversationUpdate={handleConversationUpdate}
+            onCreateConversationWithPack={handleNewChatWithPack}
           />
         );
       case 'runs':
