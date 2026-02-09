@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import type { DashboardContext } from '../types/context.js';
 import { discoverPacks } from '@showrun/mcp-server';
 import { TaskPackLoader } from '@showrun/core';
@@ -53,13 +52,19 @@ export function createConfigRouter(ctx: DashboardContext): Router {
 
   // REST API: Get system info for MCP config generation
   router.get('/api/system-info', (_req: Request, res: Response) => {
-    // Resolve the showrun CLI path relative to this package
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const cliPath = resolve(__dirname, '../../../showrun/dist/cli.js');
+    // Detect whether showrun was launched via npx / global install or directly via node
+    const isNpx = Boolean(
+      process.env.npm_execpath || // running under npm/npx/pnpm
+      process.env.npm_lifecycle_event
+    );
+
+    // process.argv[1] is the actual entry script that Node is running
+    const cliPath = process.argv[1] ? resolve(process.argv[1]) : '';
 
     res.json({
       nodePath: process.execPath,
       cliPath,
+      useNpx: isNpx,
     });
   });
 

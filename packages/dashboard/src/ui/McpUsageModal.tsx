@@ -10,6 +10,7 @@ interface McpUsageModalProps {
 interface SystemInfo {
   nodePath: string;
   cliPath: string;
+  useNpx: boolean;
 }
 
 type Section = 'claude-desktop' | 'vscode' | 'cursor';
@@ -66,7 +67,14 @@ function McpUsageModal({ packId, packPath, onClose, token }: McpUsageModalProps)
 
   const generateJson = (format: 'claude-desktop' | 'vscode' | 'cursor'): string => {
     if (!systemInfo) return '';
-    const { nodePath, cliPath } = systemInfo;
+    const { nodePath, cliPath, useNpx } = systemInfo;
+
+    // When launched via npx/pnpm, use "npx showrun" so the config is portable.
+    // Otherwise fall back to the absolute node + cli.js path.
+    const command = useNpx ? 'npx' : nodePath;
+    const baseArgs = useNpx
+      ? ['showrun', 'serve', '--packs', packDir]
+      : [cliPath, 'serve', '--packs', packDir];
 
     if (format === 'vscode') {
       return JSON.stringify(
@@ -74,8 +82,8 @@ function McpUsageModal({ packId, packPath, onClose, token }: McpUsageModalProps)
           servers: {
             [packId]: {
               type: 'stdio',
-              command: nodePath,
-              args: [cliPath, 'serve', '--packs', packDir],
+              command,
+              args: baseArgs,
             },
           },
         },
@@ -89,8 +97,8 @@ function McpUsageModal({ packId, packPath, onClose, token }: McpUsageModalProps)
       {
         mcpServers: {
           [packId]: {
-            command: nodePath,
-            args: [cliPath, 'serve', '--packs', packDir],
+            command,
+            args: baseArgs,
           },
         },
       },
