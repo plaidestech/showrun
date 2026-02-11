@@ -12,6 +12,8 @@ Tags: `added`, `fixed`, `changed`, `removed`
 
 ## 0.1.1 — 2026-02-11
 
+- [changed] Updated package.json description to align with README
+- [changed] Removed private flag from package.json to enable npm publishing
 - [added] Full conversation transcript logging — saves agent messages, tool traces, and flow state to `conversation_transcripts` table (gated behind `--transcript-logging` / `SHOWRUN_TRANSCRIPT_LOGGING`)
 - [added] `agent.transcriptLogging` config option with CLI flag `--transcript-logging` and env var `SHOWRUN_TRANSCRIPT_LOGGING`
 - [fixed] Capture thinking output in saved conversation transcripts (was only streamed to client, not persisted)
