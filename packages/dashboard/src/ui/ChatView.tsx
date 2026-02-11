@@ -6,6 +6,7 @@ import SecretsRequestModal from './SecretsRequestModal.js';
 import VersionPanel from './VersionPanel.js';
 import McpUsageModal from './McpUsageModal.js';
 import { parseCommand, findCommand, COMMAND_REGISTRY, type CommandContext } from './chatCommands.js';
+import { ShowRunLogo } from './ShowRunLogo.js';
 
 export interface Message {
   id: string;
@@ -608,7 +609,7 @@ export default function ChatView({
   if (!conversation) {
     return (
       <div className="welcome-screen">
-        <div className="welcome-logo">ShowRun</div>
+        <div className="welcome-logo"><ShowRunLogo size="xl" /></div>
         <div className="welcome-subtitle">
           Create browser automation flows through conversation. Select a conversation or start a new chat.
         </div>
@@ -761,8 +762,8 @@ export default function ChatView({
                 {isSummarizing && (
                   <div style={{
                     padding: '10px 14px',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    backgroundColor: 'rgba(255, 103, 26, 0.1)',
+                    border: '1px solid rgba(255, 103, 26, 0.2)',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
