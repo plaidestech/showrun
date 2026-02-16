@@ -25,6 +25,11 @@ runs-dashboard/
 pnpm-debug.log*
 npm-debug.log*
 
+# Agentic workflow logs
+.github/aw/logs/
+# General logs directory
+logs/
+
 # OS
 .DS_Store
 Thumbs.db
