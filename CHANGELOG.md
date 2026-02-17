@@ -10,6 +10,13 @@ Tags: `added`, `fixed`, `changed`, `removed`
 
 ## Unreleased
 
+- [added] Test coverage infrastructure with vitest and @vitest/coverage-v8
+- [added] Coverage configuration for core, mcp-server, and dashboard packages
+- [added] GitHub Actions workflow for automated test coverage reporting
+- [added] Test coverage badge to README.md
+- [added] Comprehensive tests for context.ts module (100% coverage)
+- [added] Extended tests for templating.ts module (62% coverage)
+- [added] Root-level test:coverage script for aggregate coverage reporting
 - [fixed] Auto-detect existing `.browser-profile/` in pack directory and use it even when `persistence` is not explicitly configured
 - [fixed] MCP server (stdio and HTTP) now passes `packPath` so Camoufox uses the pack's browser profile
 - [fixed] `editor_run_pack` now passes `profileId` and `packPath` so Camoufox reuses the pack's persistent browser profile instead of launching an ephemeral instance
