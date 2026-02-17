@@ -6,5 +6,16 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     testTimeout: 10000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html', 'lcov'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**'],
+      all: true,
+      lines: 50,
+      functions: 50,
+      branches: 50,
+      statements: 50,
+    },
   },
 });
