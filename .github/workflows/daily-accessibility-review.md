@@ -33,7 +33,7 @@ timeout-minutes: 15
 steps:
   - name: Checkout repository
     uses: actions/checkout@v4
-    - name: Build and run app in background
+  - name: Build and run app in background
     run: |
       # Install dependencies
       pnpm install
