@@ -4,6 +4,8 @@
 
 A TypeScript + Playwright framework for deterministic, versioned browser automation **Task Packs**: define flows in JSON or code, run them via CLI or MCP, and edit them with an AI-assisted dashboard (Teach Mode).
 
+📖 **New to ShowRun?** Read [ShowRun vs. Playwright: When to Use Which?](docs/blog/showrun-vs-playwright.md) to understand how ShowRun compares to Playwright and when to use each tool.
+
 ## What is a Task Pack?
 
 A **Task Pack** is a self-contained, versioned automation module that:
