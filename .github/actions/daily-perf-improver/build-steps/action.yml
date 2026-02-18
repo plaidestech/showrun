@@ -1,0 +1,39 @@
+name: "Daily Perf Improver Build Steps"
+description: "Sets up ShowRun environment for performance testing and development"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        echo "=== Installing dependencies ===" | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+        pnpm install 2>&1 | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+
+    - name: Fetch Camoufox browser
+      shell: bash
+      run: |
+        echo "=== Fetching Camoufox browser ===" | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+        npx camoufox-js fetch 2>&1 | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+
+    - name: Build all packages
+      shell: bash
+      run: |
+        echo "=== Building all packages ===" | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+        time pnpm build 2>&1 | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+
+    - name: Run unit tests
+      shell: bash
+      run: |
+        echo "=== Running unit tests ===" | tee -a "$GITHUB_WORKSPACE/build-steps.log"
+        pnpm test:unit 2>&1 | tee -a "$GITHUB_WORKSPACE/build-steps.log" || echo "Tests completed with errors" | tee -a "$GITHUB_WORKSPACE/build-steps.log"
