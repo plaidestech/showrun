@@ -195,6 +195,51 @@ That's it! See `taskpacks/example-json/` for a complete example.
 node packages/showrun/dist/cli.js run ./taskpacks/my-pack --inputs '{"url":"https://example.com"}'
 ```
 
+## Example Task Packs
+
+The repository includes several example task packs demonstrating different capabilities:
+
+### Basic Examples
+
+- **[example-json](taskpacks/example-json/)** - Simple DOM extraction from example.com
+  - Best for: Learning the basics
+  - Steps used: `navigate`, `wait_for`, `extract_title`, `extract_text`
+
+### API-First Examples
+
+- **[github-repo-info](taskpacks/github-repo-info/)** - GitHub repository data via API interception
+  - Best for: API-based data collection
+  - Steps used: `navigate`, `network_find`, `network_extract`
+  - Demonstrates: JMESPath queries, structured API data
+
+### Form & Interaction Examples
+
+- **[form-automation](taskpacks/form-automation/)** - Multi-step form filling and submission
+  - Best for: Form automation workflows
+  - Steps used: `fill`, `select_option`, `click`, `set_var`
+  - Demonstrates: Dropdowns, checkboxes, default values
+
+### Content Extraction Examples
+
+- **[weather-forecast](taskpacks/weather-forecast/)** - Weather data from weather.gov
+  - Best for: DOM-based content extraction
+  - Steps used: `wait_for`, `extract_text`
+  - Demonstrates: Multiple CSS selectors, public data sources
+
+- **[hackernews-stories](taskpacks/hackernews-stories/)** - Top stories from Hacker News
+  - Best for: List and attribute extraction
+  - Steps used: `extract_text`, `extract_attribute`
+  - Demonstrates: CSS sibling selectors, JavaScript expressions
+
+### Advanced Examples
+
+- **[multi-tab-demo](taskpacks/multi-tab-demo/)** - Multi-tab navigation and data collection
+  - Best for: Parallel page workflows
+  - Steps used: `new_tab`, `switch_tab`
+  - Demonstrates: Tab management, handle storage
+
+Each example includes a detailed README with use cases, expected outputs, and key patterns.
+
 ## Running Task Packs
 
 Use the unified `showrun` CLI to run task packs:

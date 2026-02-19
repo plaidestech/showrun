@@ -1,0 +1,7 @@
+{
+  "id": "github.repo.info",
+  "name": "GitHub Repository Info Collector",
+  "version": "0.1.0",
+  "description": "Collects repository information from GitHub by capturing API responses during page navigation",
+  "kind": "json-dsl"
+}

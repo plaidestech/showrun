@@ -1,0 +1,7 @@
+{
+  "id": "hackernews.top.stories",
+  "name": "HackerNews Top Stories Collector",
+  "version": "0.1.0",
+  "description": "Collects top stories from Hacker News using network request interception",
+  "kind": "json-dsl"
+}

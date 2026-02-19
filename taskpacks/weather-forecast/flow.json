@@ -1,0 +1,101 @@
+{
+  "inputs": {
+    "latitude": {
+      "type": "string",
+      "required": true,
+      "description": "Latitude coordinate (e.g., '40.7128')"
+    },
+    "longitude": {
+      "type": "string",
+      "required": true,
+      "description": "Longitude coordinate (e.g., '-74.0060')"
+    }
+  },
+  "collectibles": [
+    {
+      "name": "location",
+      "type": "string",
+      "description": "Location name"
+    },
+    {
+      "name": "current_conditions",
+      "type": "string",
+      "description": "Current weather conditions"
+    },
+    {
+      "name": "temperature",
+      "type": "string",
+      "description": "Current temperature"
+    },
+    {
+      "name": "forecast_today",
+      "type": "string",
+      "description": "Forecast for today"
+    }
+  ],
+  "flow": [
+    {
+      "id": "navigate",
+      "type": "navigate",
+      "label": "Navigate to weather.gov",
+      "params": {
+        "url": "https://forecast.weather.gov/MapClick.php?lat={{inputs.latitude}}&lon={{inputs.longitude}}",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "wait_for_location",
+      "type": "wait_for",
+      "label": "Wait for location heading",
+      "params": {
+        "target": { "kind": "css", "selector": ".point-forecast-top h2" },
+        "visible": true,
+        "timeoutMs": 10000
+      }
+    },
+    {
+      "id": "extract_location",
+      "type": "extract_text",
+      "label": "Extract location name",
+      "params": {
+        "target": { "kind": "css", "selector": ".point-forecast-top h2" },
+        "out": "location",
+        "first": true,
+        "trim": true
+      }
+    },
+    {
+      "id": "extract_conditions",
+      "type": "extract_text",
+      "label": "Extract current conditions",
+      "params": {
+        "target": { "kind": "css", "selector": ".myforecast-current" },
+        "out": "current_conditions",
+        "first": true,
+        "trim": true
+      }
+    },
+    {
+      "id": "extract_temperature",
+      "type": "extract_text",
+      "label": "Extract temperature",
+      "params": {
+        "target": { "kind": "css", "selector": ".myforecast-current-lrg" },
+        "out": "temperature",
+        "first": true,
+        "trim": true
+      }
+    },
+    {
+      "id": "extract_forecast",
+      "type": "extract_text",
+      "label": "Extract today's forecast",
+      "params": {
+        "target": { "kind": "css", "selector": "#detailed-forecast-body .forecast-text:first-of-type" },
+        "out": "forecast_today",
+        "first": true,
+        "trim": true
+      }
+    }
+  ]
+}

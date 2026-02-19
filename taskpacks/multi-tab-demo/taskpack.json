@@ -1,0 +1,7 @@
+{
+  "id": "multi.tab.navigation",
+  "name": "Multi-Tab Navigation Demo",
+  "version": "0.1.0",
+  "description": "Demonstrates opening multiple tabs and switching between them to collect data",
+  "kind": "json-dsl"
+}

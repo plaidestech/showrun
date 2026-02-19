@@ -1,0 +1,129 @@
+{
+  "inputs": {
+    "url_1": {
+      "type": "string",
+      "required": false,
+      "description": "First URL to visit (default: example.com)"
+    },
+    "url_2": {
+      "type": "string",
+      "required": false,
+      "description": "Second URL to visit (default: wikipedia.org)"
+    }
+  },
+  "collectibles": [
+    {
+      "name": "tab1_title",
+      "type": "string",
+      "description": "Title from first tab"
+    },
+    {
+      "name": "tab2_title",
+      "type": "string",
+      "description": "Title from second tab"
+    },
+    {
+      "name": "tab_count",
+      "type": "string",
+      "description": "Total number of tabs opened"
+    }
+  ],
+  "flow": [
+    {
+      "id": "set_url1",
+      "type": "set_var",
+      "label": "Set default URL for tab 1",
+      "params": {
+        "name": "url1",
+        "value": "{{inputs.url_1 || 'https://example.com'}}"
+      }
+    },
+    {
+      "id": "set_url2",
+      "type": "set_var",
+      "label": "Set default URL for tab 2",
+      "params": {
+        "name": "url2",
+        "value": "{{inputs.url_2 || 'https://en.wikipedia.org'}}"
+      }
+    },
+    {
+      "id": "navigate_first",
+      "type": "navigate",
+      "label": "Navigate to first URL in initial tab",
+      "params": {
+        "url": "{{vars.url1}}",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "wait_first_load",
+      "type": "sleep",
+      "label": "Wait for first page to settle",
+      "params": {
+        "durationMs": 1000
+      }
+    },
+    {
+      "id": "extract_tab1_title",
+      "type": "extract_title",
+      "label": "Extract title from first tab",
+      "params": {
+        "out": "tab1_title"
+      }
+    },
+    {
+      "id": "open_new_tab",
+      "type": "new_tab",
+      "label": "Open a new browser tab",
+      "params": {
+        "out": "tab2_handle"
+      }
+    },
+    {
+      "id": "switch_to_tab2",
+      "type": "switch_tab",
+      "label": "Switch to the new tab",
+      "params": {
+        "handle": "{{vars.tab2_handle}}"
+      }
+    },
+    {
+      "id": "navigate_second",
+      "type": "navigate",
+      "label": "Navigate to second URL in new tab",
+      "params": {
+        "url": "{{vars.url2}}",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "wait_second_load",
+      "type": "sleep",
+      "label": "Wait for second page to settle",
+      "params": {
+        "durationMs": 1000
+      }
+    },
+    {
+      "id": "extract_tab2_title",
+      "type": "extract_title",
+      "label": "Extract title from second tab",
+      "params": {
+        "out": "tab2_title"
+      }
+    },
+    {
+      "id": "count_tabs",
+      "type": "extract_text",
+      "label": "Count total tabs",
+      "params": {
+        "target": {
+          "kind": "js",
+          "expression": "'2'"
+        },
+        "out": "tab_count"
+      }
+    }
+  ]
+}
