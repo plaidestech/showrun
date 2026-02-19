@@ -1,0 +1,7 @@
+{
+  "id": "form.automation.demo",
+  "name": "Form Automation Demo",
+  "version": "0.1.0",
+  "description": "Demonstrates form filling, selection, and submission using Playwright test pages",
+  "kind": "json-dsl"
+}

@@ -1,0 +1,126 @@
+{
+  "inputs": {
+    "owner": {
+      "type": "string",
+      "required": true,
+      "description": "GitHub repository owner (username or organization)"
+    },
+    "repo": {
+      "type": "string",
+      "required": true,
+      "description": "GitHub repository name"
+    }
+  },
+  "collectibles": [
+    {
+      "name": "repo_name",
+      "type": "string",
+      "description": "Full repository name"
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "description": "Repository description"
+    },
+    {
+      "name": "stars",
+      "type": "number",
+      "description": "Number of stars"
+    },
+    {
+      "name": "forks",
+      "type": "number",
+      "description": "Number of forks"
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "description": "Primary programming language"
+    },
+    {
+      "name": "topics",
+      "type": "string",
+      "description": "Repository topics (comma-separated)"
+    }
+  ],
+  "flow": [
+    {
+      "id": "navigate",
+      "type": "navigate",
+      "label": "Navigate to GitHub repository",
+      "params": {
+        "url": "https://github.com/{{inputs.owner}}/{{inputs.repo}}",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "find_api_response",
+      "type": "network_find",
+      "label": "Find repository API response",
+      "params": {
+        "urlPattern": "api.github.com/repos/",
+        "out": "api_data"
+      }
+    },
+    {
+      "id": "extract_repo_name",
+      "type": "network_extract",
+      "label": "Extract repository name from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "full_name",
+        "out": "repo_name"
+      }
+    },
+    {
+      "id": "extract_description",
+      "type": "network_extract",
+      "label": "Extract description from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "description",
+        "out": "description"
+      }
+    },
+    {
+      "id": "extract_stars",
+      "type": "network_extract",
+      "label": "Extract star count from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "stargazers_count",
+        "out": "stars"
+      }
+    },
+    {
+      "id": "extract_forks",
+      "type": "network_extract",
+      "label": "Extract fork count from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "forks_count",
+        "out": "forks"
+      }
+    },
+    {
+      "id": "extract_language",
+      "type": "network_extract",
+      "label": "Extract primary language from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "language",
+        "out": "language"
+      }
+    },
+    {
+      "id": "extract_topics",
+      "type": "network_extract",
+      "label": "Extract topics from API",
+      "params": {
+        "from": "api_data",
+        "jmesPath": "join(',', topics)",
+        "out": "topics"
+      }
+    }
+  ]
+}

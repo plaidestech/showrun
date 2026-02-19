@@ -1,0 +1,7 @@
+{
+  "id": "weather.forecast.checker",
+  "name": "Weather Forecast Checker",
+  "version": "0.1.0",
+  "description": "Extracts weather forecast data from weather.gov using DOM extraction",
+  "kind": "json-dsl"
+}

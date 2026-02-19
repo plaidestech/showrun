@@ -1,0 +1,97 @@
+{
+  "inputs": {
+    "max_stories": {
+      "type": "number",
+      "required": false,
+      "description": "Maximum number of stories to collect (default: 10)"
+    }
+  },
+  "collectibles": [
+    {
+      "name": "story_count",
+      "type": "number",
+      "description": "Number of stories collected"
+    },
+    {
+      "name": "first_story_title",
+      "type": "string",
+      "description": "Title of the first story"
+    },
+    {
+      "name": "first_story_url",
+      "type": "string",
+      "description": "URL of the first story"
+    },
+    {
+      "name": "first_story_points",
+      "type": "string",
+      "description": "Points/score of the first story"
+    }
+  ],
+  "flow": [
+    {
+      "id": "navigate",
+      "type": "navigate",
+      "label": "Navigate to Hacker News",
+      "params": {
+        "url": "https://news.ycombinator.com/",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "wait_for_stories",
+      "type": "wait_for",
+      "label": "Wait for story list to load",
+      "params": {
+        "target": { "kind": "css", "selector": ".athing" },
+        "visible": true,
+        "timeoutMs": 5000
+      }
+    },
+    {
+      "id": "count_stories",
+      "type": "extract_text",
+      "label": "Count visible stories",
+      "params": {
+        "target": { 
+          "kind": "js", 
+          "expression": "document.querySelectorAll('.athing').length.toString()"
+        },
+        "out": "story_count"
+      }
+    },
+    {
+      "id": "extract_first_title",
+      "type": "extract_text",
+      "label": "Extract first story title",
+      "params": {
+        "target": { "kind": "css", "selector": ".athing:first-child .titleline > a" },
+        "out": "first_story_title",
+        "first": true,
+        "trim": true
+      }
+    },
+    {
+      "id": "extract_first_url",
+      "type": "extract_attribute",
+      "label": "Extract first story URL",
+      "params": {
+        "target": { "kind": "css", "selector": ".athing:first-child .titleline > a" },
+        "attribute": "href",
+        "out": "first_story_url",
+        "first": true
+      }
+    },
+    {
+      "id": "extract_first_points",
+      "type": "extract_text",
+      "label": "Extract first story points",
+      "params": {
+        "target": { "kind": "css", "selector": ".athing:first-child + tr .score" },
+        "out": "first_story_points",
+        "first": true,
+        "trim": true
+      }
+    }
+  ]
+}

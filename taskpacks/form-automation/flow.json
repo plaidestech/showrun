@@ -1,0 +1,134 @@
+{
+  "inputs": {
+    "full_name": {
+      "type": "string",
+      "required": true,
+      "description": "Full name to enter in the form"
+    },
+    "email": {
+      "type": "string",
+      "required": true,
+      "description": "Email address"
+    },
+    "country": {
+      "type": "string",
+      "required": false,
+      "description": "Country selection (e.g., 'United States')"
+    }
+  },
+  "collectibles": [
+    {
+      "name": "success_message",
+      "type": "string",
+      "description": "Confirmation message after form submission"
+    },
+    {
+      "name": "form_url",
+      "type": "string",
+      "description": "URL of the form page"
+    }
+  ],
+  "flow": [
+    {
+      "id": "set_country_var",
+      "type": "set_var",
+      "label": "Set default country if not provided",
+      "params": {
+        "name": "country_value",
+        "value": "{{inputs.country || 'United States'}}"
+      }
+    },
+    {
+      "id": "navigate",
+      "type": "navigate",
+      "label": "Navigate to test form page",
+      "params": {
+        "url": "https://demo.playwright.dev/demo.html",
+        "waitUntil": "networkidle"
+      }
+    },
+    {
+      "id": "wait_for_form",
+      "type": "wait_for",
+      "label": "Wait for form to be visible",
+      "params": {
+        "target": { "kind": "css", "selector": "form" },
+        "visible": true,
+        "timeoutMs": 5000
+      }
+    },
+    {
+      "id": "fill_name",
+      "type": "fill",
+      "label": "Fill in name field",
+      "params": {
+        "target": { "kind": "css", "selector": "input[name='name']" },
+        "value": "{{inputs.full_name}}"
+      }
+    },
+    {
+      "id": "fill_email",
+      "type": "fill",
+      "label": "Fill in email field",
+      "params": {
+        "target": { "kind": "css", "selector": "input[name='email']" },
+        "value": "{{inputs.email}}"
+      }
+    },
+    {
+      "id": "select_country",
+      "type": "select_option",
+      "label": "Select country from dropdown",
+      "params": {
+        "target": { "kind": "css", "selector": "select[name='country']" },
+        "value": "{{vars.country_value}}"
+      }
+    },
+    {
+      "id": "check_newsletter",
+      "type": "click",
+      "label": "Check newsletter subscription checkbox",
+      "params": {
+        "target": { "kind": "css", "selector": "input[name='newsletter']" }
+      }
+    },
+    {
+      "id": "submit_form",
+      "type": "click",
+      "label": "Click submit button",
+      "params": {
+        "target": { "kind": "css", "selector": "button[type='submit']" }
+      }
+    },
+    {
+      "id": "wait_for_success",
+      "type": "wait_for",
+      "label": "Wait for success message",
+      "params": {
+        "target": { "kind": "css", "selector": ".success-message" },
+        "visible": true,
+        "timeoutMs": 5000
+      }
+    },
+    {
+      "id": "extract_message",
+      "type": "extract_text",
+      "label": "Extract confirmation message",
+      "params": {
+        "target": { "kind": "css", "selector": ".success-message" },
+        "out": "success_message",
+        "first": true,
+        "trim": true
+      }
+    },
+    {
+      "id": "extract_url",
+      "type": "extract_text",
+      "label": "Extract current URL",
+      "params": {
+        "target": { "kind": "js", "expression": "window.location.href" },
+        "out": "form_url"
+      }
+    }
+  ]
+}
