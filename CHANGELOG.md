@@ -10,6 +10,10 @@ Tags: `added`, `fixed`, `changed`, `removed`
 
 ## Unreleased
 
+- [added] Comprehensive NPM publishing guide in docs/NPM_PUBLISHING.md with step-by-step instructions
+- [changed] Added publish:packages and publish:dry-run scripts to root package.json for easier npm publishing
+- [changed] Added publishConfig.access: "public" to main showrun package.json
+- [changed] Updated showrun package files field to include bin directory
 - [fixed] Auto-detect existing `.browser-profile/` in pack directory and use it even when `persistence` is not explicitly configured
 - [fixed] MCP server (stdio and HTTP) now passes `packPath` so Camoufox uses the pack's browser profile
 - [fixed] `editor_run_pack` now passes `profileId` and `packPath` so Camoufox reuses the pack's persistent browser profile instead of launching an ephemeral instance
