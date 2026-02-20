@@ -440,6 +440,10 @@ See `packages/mcp-server/README.md` for details.
 
 There are no formal contribution guidelines yet. That said, all contributions are welcome — feel free to open issues, submit pull requests, or start discussions.
 
+## Publishing to npm
+
+For maintainers: See [docs/NPM_PUBLISHING.md](./docs/NPM_PUBLISHING.md) for instructions on publishing ShowRun packages to npm.
+
 ## License
 
 MIT
